@@ -1,0 +1,88 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"  // or your database provider
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id        String             @id @default(cuid())
+  name      String
+  focusArea String
+  summary   String   @db.Text
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  sessions  CoachingSession[]
+  goals     ClientGoal[]
+  documents ClientDocument[]
+}
+
+model ClientGoal {
+  id        String   @id @default(cuid())
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+}
+
+model CoachingSession {
+  id        String         @id @default(cuid())
+  client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String
+  title     String         @default("Default Session")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  messages  AgentMessage[]
+
+  @@index([clientId])
+}
+
+model AgentMessage {
+  id        String           @id @default(cuid())
+  session   CoachingSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  role      String
+  source    MessageSource    @default(AI)
+  content   String   @db.Text
+  meta      Json?
+  createdAt DateTime         @default(now())
+
+  @@index([sessionId])
+}
+
+model OverseerMessage {
+  id        String   @id @default(cuid())
+  role      String
+  source    MessageSource    @default(AI)
+  content   String   @db.Text
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model ClientDocument {
+  id           String   @id @default(cuid())
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId     String
+  originalName String
+  storedName   String
+  mimeType     String
+  size         Int
+  content      String?  @db.LongText
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+}
+enum MessageSource {
+  AI
+  HUMAN
+}
