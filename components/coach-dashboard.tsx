@@ -28,11 +28,15 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
   const [isOverseerLoading, setOverseerLoading] = useState(false);
   const [isDocUploading, setDocUploading] = useState(false);
   const [coachPrompt, setCoachPrompt] = useState("");
-  const [coachPromptUpdatedAt, setCoachPromptUpdatedAt] = useState<string | null>(null);
+  const [coachPromptUpdatedAt, setCoachPromptUpdatedAt] = useState<
+    string | null
+  >(null);
   const [isCoachPromptLoading, setCoachPromptLoading] = useState(true);
   const [isCoachPromptSaving, setCoachPromptSaving] = useState(false);
   const [overseerPrompt, setOverseerPrompt] = useState("");
-  const [overseerPromptUpdatedAt, setOverseerPromptUpdatedAt] = useState<string | null>(null);
+  const [overseerPromptUpdatedAt, setOverseerPromptUpdatedAt] = useState<
+    string | null
+  >(null);
   const [isOverseerPromptLoading, setOverseerPromptLoading] = useState(true);
   const [isOverseerPromptSaving, setOverseerPromptSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +129,9 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
       setCoachPromptUpdatedAt(data.updatedAt ?? null);
     } catch (fetchError) {
       console.error(fetchError);
-      setError((fetchError as Error).message ?? "Coachprompt laden is mislukt.");
+      setError(
+        (fetchError as Error).message ?? "Coachprompt laden is mislukt."
+      );
     } finally {
       setCoachPromptLoading(false);
     }
@@ -143,7 +149,9 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
       setOverseerPromptUpdatedAt(data.updatedAt ?? null);
     } catch (fetchError) {
       console.error(fetchError);
-      setError((fetchError as Error).message ?? "Overzichtsprompt laden is mislukt.");
+      setError(
+        (fetchError as Error).message ?? "Overzichtsprompt laden is mislukt."
+      );
     } finally {
       setOverseerPromptLoading(false);
     }
@@ -186,7 +194,9 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
     }
   }
 
-  async function handleCoachPromptSave(event: React.FormEvent<HTMLFormElement>) {
+  async function handleCoachPromptSave(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
     if (!coachPrompt.trim()) {
       setError("Prompt mag niet leeg zijn.");
@@ -213,13 +223,17 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
       setCoachPromptUpdatedAt(data.updatedAt ?? null);
     } catch (saveError) {
       console.error(saveError);
-      setError((saveError as Error).message ?? "Coachprompt opslaan is mislukt.");
+      setError(
+        (saveError as Error).message ?? "Coachprompt opslaan is mislukt."
+      );
     } finally {
       setCoachPromptSaving(false);
     }
   }
 
-  async function handleOverseerPromptSave(event: React.FormEvent<HTMLFormElement>) {
+  async function handleOverseerPromptSave(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
     if (!overseerPrompt.trim()) {
       setError("Prompt mag niet leeg zijn.");
@@ -246,7 +260,9 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
       setOverseerPromptUpdatedAt(data.updatedAt ?? null);
     } catch (saveError) {
       console.error(saveError);
-      setError((saveError as Error).message ?? "Overzichtsprompt opslaan is mislukt.");
+      setError(
+        (saveError as Error).message ?? "Overzichtsprompt opslaan is mislukt."
+      );
     } finally {
       setOverseerPromptSaving(false);
     }
@@ -489,21 +505,21 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
                       | { totalTokens?: number }
                       | undefined;
                     return (
-                    <li
-                      key={message.id}
-                      className={`rounded-xl border px-3 py-2 text-sm ${
-                        message.role === "assistant" ||
-                        message.role === "system"
-                          ? "border-blue-200 bg-blue-50 text-blue-900"
-                          : "border-slate-200 bg-white"
-                      }`}
-                    >
-                      <p className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
-                        <span>{message.role}</span>
-                        <span className="text-[11px] text-slate-500">
-                          {message.source === "HUMAN" ? "Coach" : "AI"}
-                        </span>
-                      </p>
+                      <li
+                        key={message.id}
+                        className={`rounded-xl border px-3 py-2 text-sm ${
+                          message.role === "assistant" ||
+                          message.role === "system"
+                            ? "border-blue-200 bg-blue-50 text-blue-900"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <p className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
+                          <span>{message.role}</span>
+                          <span className="text-[11px] text-slate-500">
+                            {message.source === "HUMAN" ? "Coach" : "AI"}
+                          </span>
+                        </p>
                         <p className="mt-1 whitespace-pre-wrap leading-relaxed">
                           {message.content}
                         </p>
@@ -617,8 +633,8 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
                 Systeeminstructies
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Werk direct de basisprompts bij voor zowel de cliëntcoach als
-                de overzichtscoach.
+                Werk direct de basisprompts bij voor zowel de cliëntcoach als de
+                overzichtscoach.
               </p>
             </header>
             <div className="space-y-6">
@@ -692,7 +708,9 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
                   >
                     <textarea
                       value={overseerPrompt}
-                      onChange={(event) => setOverseerPrompt(event.target.value)}
+                      onChange={(event) =>
+                        setOverseerPrompt(event.target.value)
+                      }
                       rows={6}
                       className="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-purple-500 focus:outline-none"
                       placeholder="Beschrijf de toon en focus voor de overzichtscoach..."
