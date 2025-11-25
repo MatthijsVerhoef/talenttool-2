@@ -37,6 +37,7 @@ export type DocumentKind = "TEXT" | "AUDIO";
 
 const COACH_PROMPT_ID = "coach-role";
 const OVERSEER_PROMPT_ID = "overseer-role";
+const DOCUMENT_SNIPPET_MAX_CHARS = Number(process.env.DOCUMENT_SNIPPET_MAX_CHARS ?? "0");
 
 async function ensureSession(clientId: string) {
   const client = await prisma.client.findUnique({
@@ -301,14 +302,18 @@ export async function getDocumentSnippets(
     take: limit,
   });
 
-  return documents.map(
-    (doc) =>
-      `Document (${doc.kind}): ${doc.originalName}\nGeüpload op: ${doc.createdAt.toISOString()}${
-        doc.kind === "AUDIO" && doc.audioDuration
-          ? `\nLengte audio: ${doc.audioDuration?.toFixed(1)}s`
-          : ""
-      }\nInhoud:\n${doc.content?.slice(0, 1200) ?? "Geen transcript beschikbaar."}`,
-  );
+  return documents.map((doc) => {
+    const body = doc.content ?? "Geen transcript beschikbaar.";
+    const content =
+      DOCUMENT_SNIPPET_MAX_CHARS > 0
+        ? body.slice(0, DOCUMENT_SNIPPET_MAX_CHARS)
+        : body;
+    return `Document (${doc.kind}): ${doc.originalName}\nGeüpload op: ${doc.createdAt.toISOString()}${
+      doc.kind === "AUDIO" && doc.audioDuration
+        ? `\nLengte audio: ${doc.audioDuration?.toFixed(1)}s`
+        : ""
+    }\nInhoud:\n${content}`;
+  });
 }
 
 export interface SystemPromptRecord {

@@ -13,6 +13,8 @@ import {
   getClientDocuments,
 } from "@/lib/data/store";
 
+const DOCUMENT_CONTENT_MAX_CHARS = Number(process.env.DOCUMENT_CONTENT_MAX_CHARS ?? "0");
+
 interface Params {
   params: Promise<{
     clientId: string;
@@ -65,7 +67,7 @@ export async function POST(request: Request, { params }: Params) {
     await writeFile(tempPath, buffer);
     try {
       const transcription = await transcribeAudio(tempPath, file.type);
-      content = transcription.text?.trim() || undefined;
+      content = trimContent(transcription.text?.trim() || undefined);
       audioDuration = transcription.duration;
     } catch (error) {
       console.error("Audio transcription failed", error);
@@ -74,9 +76,9 @@ export async function POST(request: Request, { params }: Params) {
     }
   } else if (isDocx) {
     const extracted = await extractDocxText(buffer);
-    content = extracted?.slice(0, 8000);
+    content = trimContent(extracted);
   } else if (shouldStoreContent(file.type, file.name)) {
-    content = buffer.toString("utf-8").slice(0, 8000);
+    content = trimContent(buffer.toString("utf-8"));
   }
 
   try {
@@ -136,6 +138,16 @@ function normalizeDocxText(xml: string) {
     .replace(/&apos;/g, "'")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function trimContent(input?: string) {
+  if (!input) {
+    return undefined;
+  }
+  if (DOCUMENT_CONTENT_MAX_CHARS > 0) {
+    return input.slice(0, DOCUMENT_CONTENT_MAX_CHARS);
+  }
+  return input;
 }
 
 function shouldStoreContent(mimeType: string, fileName: string) {
