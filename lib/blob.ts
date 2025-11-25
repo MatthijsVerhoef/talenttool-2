@@ -28,6 +28,7 @@ export async function uploadToBlob(
       token: BLOB_RW_TOKEN,
     },
   );
+  
 
   return {
     url: blob.url,
