@@ -388,94 +388,26 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
               );
             })}
           </ul>
-          {selectedClient && (
-            <div className="mt-6 space-y-5">
-              <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Overzicht
-                </p>
-                <p className="mt-2 text-sm text-slate-600">
-                  {selectedClient.summary}
-                </p>
-                <p className="mt-4 text-xs font-semibold uppercase text-slate-400">
-                  Doelen
-                </p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {selectedClient.goals.map((goal) => (
-                    <li key={goal}>{goal}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Coachdocumenten
-                </p>
-                {documents.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-500">
-                    Nog geen bestanden.
-                  </p>
-                ) : (
-                  <ul className="mt-3 space-y-2 text-xs text-slate-600">
-                    {documents.map((doc) => (
-                      <li
-                        key={doc.id}
-                        className="rounded-lg border border-slate-100 bg-slate-50 p-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-slate-800">
-                            {doc.originalName}
-                          </p>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              doc.kind === "AUDIO"
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-blue-100 text-blue-700"
-                            }`}
-                          >
-                            {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
-                          </span>
-                        </div>
-                        <p>
-                          {(doc.size / 1024).toFixed(1)} KB ·{" "}
-                          {new Date(doc.createdAt).toLocaleDateString()}
-                        </p>
-                        {doc.kind === "AUDIO" && doc.audioDuration && (
-                          <p className="text-[11px] text-slate-500">
-                            Duur: {doc.audioDuration.toFixed(1)} s
-                          </p>
-                        )}
-                        {doc.content && (
-                          <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
-                            {doc.content}
-                          </p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <form
-                  onSubmit={handleDocumentUpload}
-                  className="mt-3 space-y-2 text-xs"
-                >
-                  <input
-                    type="file"
-                    name="document"
-                    accept=".txt,.md,.json,.csv,.pdf,.doc,.docx"
-                    disabled={isDocUploading}
-                    className="w-full text-xs"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isDocUploading}
-                    className="w-full rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white disabled:opacity-50"
-                  >
-                    {isDocUploading ? "Uploaden..." : "Uploaden"}
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
+              {selectedClient && (
+                <div className="mt-6 space-y-5">
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <p className="text-xs font-semibold uppercase text-slate-400">
+                      Overzicht
+                    </p>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {selectedClient.summary}
+                    </p>
+                    <p className="mt-4 text-xs font-semibold uppercase text-slate-400">
+                      Doelen
+                    </p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                      {selectedClient.goals.map((goal) => (
+                        <li key={goal}>{goal}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
         </aside>
 
         <div className="flex-1 space-y-6">
@@ -497,6 +429,82 @@ export function CoachDashboard({ clients }: CoachDashboardProps) {
                 </p>
               )}
             </header>
+            {selectedClient && (
+              <div className="mb-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Bijlagen
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Documenten gedeeld met de coach van {selectedClient.name}
+                  </p>
+                </div>
+                {documents.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">
+                    Nog geen bestanden toegevoegd.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-2 text-xs text-slate-600">
+                    {documents.map((doc) => (
+                      <li
+                        key={doc.id}
+                        className="rounded-xl border border-slate-100 bg-white/70 p-2"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-900">
+                              {doc.originalName}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {(doc.size / 1024).toFixed(1)} KB ·{" "}
+                              {new Date(doc.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <span
+                            className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              doc.kind === "AUDIO"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
+                          </span>
+                        </div>
+                        {doc.kind === "AUDIO" && doc.audioDuration && (
+                          <p className="text-[11px] text-slate-500">
+                            Duur: {doc.audioDuration.toFixed(1)} s
+                          </p>
+                        )}
+                        {doc.content && (
+                          <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
+                            {doc.content}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <form
+                  onSubmit={handleDocumentUpload}
+                  className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center"
+                >
+                  <input
+                    type="file"
+                    name="document"
+                    accept=".txt,.md,.json,.csv,.pdf,.doc,.docx"
+                    disabled={isDocUploading}
+                    className="flex-1 text-xs"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isDocUploading}
+                    className="rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white disabled:opacity-50"
+                  >
+                    {isDocUploading ? "Uploaden..." : "Bijlage uploaden"}
+                  </button>
+                </form>
+              </div>
+            )}
             <div className="mb-4 h-72 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-4">
               {messages.length === 0 ? (
                 <p className="text-sm text-slate-500">Nog geen gesprek.</p>

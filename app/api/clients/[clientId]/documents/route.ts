@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { NextResponse } from "next/server";
+import JSZip from "jszip";
 
 import { transcribeAudio } from "@/lib/ai/openai";
 import { uploadToBlob } from "@/lib/blob";
@@ -55,6 +56,7 @@ export async function POST(request: Request, { params }: Params) {
   const buffer = Buffer.from(arrayBuffer);
 
   const isAudio = isAudioFile(file.name, file.type);
+  const isDocx = isDocxFile(file.name, file.type);
   let content: string | undefined;
   let audioDuration: number | undefined;
 
@@ -70,6 +72,9 @@ export async function POST(request: Request, { params }: Params) {
     } finally {
       await unlink(tempPath).catch(() => undefined);
     }
+  } else if (isDocx) {
+    const extracted = await extractDocxText(buffer);
+    content = extracted?.slice(0, 8000);
   } else if (shouldStoreContent(file.type, file.name)) {
     content = buffer.toString("utf-8").slice(0, 8000);
   }
@@ -103,11 +108,48 @@ export async function POST(request: Request, { params }: Params) {
   return NextResponse.json({ documents });
 }
 
+async function extractDocxText(buffer: Buffer) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const mainDocument = zip.file("word/document.xml");
+    if (!mainDocument) {
+      return undefined;
+    }
+    const xml = await mainDocument.async("text");
+    return normalizeDocxText(xml);
+  } catch (error) {
+    console.error("DOCX extraction failed", error);
+    return undefined;
+  }
+}
+
+function normalizeDocxText(xml: string) {
+  return xml
+    .replace(/<\/w:p>/g, "\n")
+    .replace(/<w:br\s*\/>/g, "\n")
+    .replace(/<w:tab[^>]*\/>/g, "\t")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function shouldStoreContent(mimeType: string, fileName: string) {
   if (mimeType?.startsWith("text/") || mimeType === "application/json") {
     return true;
   }
   return /\.(md|txt|json|csv)$/i.test(fileName);
+}
+
+function isDocxFile(fileName: string, mimeType?: string) {
+  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return true;
+  }
+  return /\.docx$/i.test(fileName);
 }
 
 function isAudioFile(fileName: string, mimeType?: string) {
