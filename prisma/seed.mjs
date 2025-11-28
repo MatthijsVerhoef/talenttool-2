@@ -6,7 +6,6 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starten met database seed...');
 
-  // Bestaande data opschonen
   console.log('🗑️  Bestaande data wordt opgeschoond...');
   await prisma.agentMessage.deleteMany({});
   await prisma.overseerMessage.deleteMany({});
