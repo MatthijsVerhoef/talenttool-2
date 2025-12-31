@@ -1639,7 +1639,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                         onSubmit={handleOverseerPromptSave}
                         className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"
                       >
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1 ">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold text-slate-900">
