@@ -1,6 +1,7 @@
 import { runAgentCompletion } from "@/lib/ai/openai";
 import { DEFAULT_COACH_ROLE_PROMPT, DEFAULT_OVERSEER_ROLE_PROMPT } from "@/lib/agents/prompts";
 import {
+  getAIModelSettings,
   appendClientMessage,
   getClient,
   getCoachPrompt,
@@ -13,9 +14,6 @@ import {
   type AgentRole,
   type ClientProfile,
 } from "@/lib/data/store";
-
-const DEFAULT_COACH_MODEL = process.env.OPENAI_COACH_MODEL ?? "gpt-4o-mini";
-const DEFAULT_OVERSEER_MODEL = process.env.OPENAI_OVERSEER_MODEL ?? "gpt-4o-mini";
 
 type ChatRole = "user" | "assistant" | "system";
 
@@ -51,6 +49,7 @@ export async function runCoachAgent(
   const documentSnippets = await getDocumentSnippets(clientId);
   const storedPrompt = await getCoachPrompt();
   const coachPrompt = storedPrompt?.content ?? DEFAULT_COACH_ROLE_PROMPT;
+  const { coachModel } = await getAIModelSettings();
   const messages = [
     {
       role: "system" as const,
@@ -63,7 +62,7 @@ export async function runCoachAgent(
   ];
 
   const completion = await runAgentCompletion({
-    model: DEFAULT_COACH_MODEL,
+    model: coachModel,
     messages,
   });
 
@@ -98,9 +97,10 @@ export async function runOverseerAgent(userMessage: string): Promise<AgentReply>
 
   const storedPrompt = await getOverseerPrompt();
   const systemPrompt = storedPrompt?.content ?? DEFAULT_OVERSEER_ROLE_PROMPT;
+  const { overseerModel } = await getAIModelSettings();
 
   const completion = await runAgentCompletion({
-    model: DEFAULT_OVERSEER_MODEL,
+    model: overseerModel,
     messages: [
       {
         role: "system",

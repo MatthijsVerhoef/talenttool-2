@@ -6,12 +6,10 @@ import { useRouter } from "next/navigation";
 
 import type { LucideIcon } from "lucide-react";
 import {
-  FileText,
   LogOut,
   MessageSquare,
   Paperclip,
   Settings,
-  Sparkles,
   Target,
   CheckCircle2,
   Lightbulb,
@@ -49,6 +47,10 @@ interface CoachDashboardProps {
 type HistoryState = Record<string, AgentMessage[]>;
 type DocumentState = Record<string, ClientDocument[]>;
 type SettingsTab = "profile" | "prompts";
+type ModelOption = {
+  value: string;
+  label: string;
+};
 
 function getInitials(name?: string | null) {
   if (!name) return "";
@@ -104,6 +106,11 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [isUserSaving, setUserSaving] = useState(false);
   const [isClientSaving, setClientSaving] = useState(false);
   const [isCreatingClient, setCreatingClient] = useState(false);
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+  const [coachModel, setCoachModel] = useState("");
+  const [overseerModel, setOverseerModel] = useState("");
+  const [isModelLoading, setModelLoading] = useState(true);
+  const [isModelSaving, setModelSaving] = useState(false);
   const [coachPrompt, setCoachPrompt] = useState("");
   const [coachPromptUpdatedAt, setCoachPromptUpdatedAt] = useState<
     string | null
@@ -174,12 +181,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       void fetchClientDocuments(selectedClientId);
     }
   }, [selectedClientId, clientHistories, clientDocuments]);
-
-  useEffect(() => {
-    void fetchOverseerThread();
-    void fetchCoachPrompt();
-    void fetchOverseerPrompt();
-  }, []);
 
   useEffect(() => {
     if (!selectedClient || isClientDialogOpen) {
@@ -288,6 +289,54 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
   }
 
+  const fetchModelSettings = useCallback(async () => {
+    if (!isAdmin) {
+      setModelLoading(false);
+      return;
+    }
+
+    setModelLoading(true);
+    try {
+      const response = await fetch("/api/models");
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Kan AI-modellen niet laden.");
+      }
+
+      const normalizedOptions: ModelOption[] = Array.isArray(
+        data.availableModels,
+      )
+        ? (data.availableModels as ModelOption[]).filter(
+            (option) =>
+              typeof option?.value === "string" &&
+              typeof option?.label === "string",
+          )
+        : [];
+
+      setAvailableModels(normalizedOptions);
+      setCoachModel(
+        typeof data.coachModel === "string" ? data.coachModel : "",
+      );
+      setOverseerModel(
+        typeof data.overseerModel === "string" ? data.overseerModel : "",
+      );
+    } catch (fetchError) {
+      console.error(fetchError);
+      setError(
+        (fetchError as Error).message ?? "AI-modellen laden is mislukt.",
+      );
+    } finally {
+      setModelLoading(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    void fetchOverseerThread();
+    void fetchCoachPrompt();
+    void fetchOverseerPrompt();
+    void fetchModelSettings();
+  }, [fetchModelSettings]);
+
   async function handleCoachSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedClientId || !coachInput.trim()) return;
@@ -385,6 +434,60 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       );
     } finally {
       setOverseerPromptSaving(false);
+    }
+  }
+
+  async function handleModelSave(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!coachModel || !overseerModel) {
+      setError("Selecteer eerst beide AI-modellen.");
+      return;
+    }
+
+    setModelSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coachModel, overseerModel }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Opslaan van modellen is mislukt.");
+      }
+
+      const normalizedOptions: ModelOption[] = Array.isArray(
+        data.availableModels,
+      )
+        ? (data.availableModels as ModelOption[]).filter(
+            (option) =>
+              typeof option?.value === "string" &&
+              typeof option?.label === "string",
+          )
+        : availableModels;
+
+      if (normalizedOptions.length) {
+        setAvailableModels(normalizedOptions);
+      }
+
+      setCoachModel(
+        typeof data.coachModel === "string" ? data.coachModel : coachModel,
+      );
+      setOverseerModel(
+        typeof data.overseerModel === "string"
+          ? data.overseerModel
+          : overseerModel,
+      );
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        (saveError as Error).message ?? "AI-modellen opslaan is mislukt.",
+      );
+    } finally {
+      setModelSaving(false);
     }
   }
 
@@ -1113,6 +1216,102 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                 )}
                                 {activeSettingsTab === "prompts" && isAdmin && (
                                   <div className="space-y-6">
+                                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
+                                      <div>
+                                        <p className="text-sm font-medium text-slate-900">
+                                          AI-modellen
+                                        </p>
+                                        <p className="text-xs text-slate-500">
+                                          Kies welk OpenAI-model wordt gebruikt
+                                          voor de coach en de overzichtscoach.
+                                        </p>
+                                      </div>
+                                      {isModelLoading ? (
+                                        <p className="text-sm text-slate-500">
+                                          AI-modellen worden geladen...
+                                        </p>
+                                      ) : availableModels.length === 0 ? (
+                                        <p className="text-sm text-slate-500">
+                                          Geen modelopties gevonden. Voeg
+                                          modellen toe in de configuratie.
+                                        </p>
+                                      ) : (
+                                        <form
+                                          onSubmit={handleModelSave}
+                                          className="space-y-3"
+                                        >
+                                          <label className="flex flex-col gap-1 text-sm">
+                                            Coach assistent
+                                            <select
+                                              value={coachModel}
+                                              onChange={(event) =>
+                                                setCoachModel(event.target.value)
+                                              }
+                                              className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
+                                              required
+                                            >
+                                              <option value="" disabled>
+                                                Kies een model
+                                              </option>
+                                              {availableModels.map((option) => (
+                                                <option
+                                                  key={option.value}
+                                                  value={option.value}
+                                                >
+                                                  {option.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <span className="text-xs text-slate-500">
+                                              Wordt gebruikt voor het
+                                              cliëntgesprek.
+                                            </span>
+                                          </label>
+
+                                          <label className="flex flex-col gap-1 text-sm">
+                                            Overzichtscoach
+                                            <select
+                                              value={overseerModel}
+                                              onChange={(event) =>
+                                                setOverseerModel(
+                                                  event.target.value
+                                                )
+                                              }
+                                              className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
+                                              required
+                                            >
+                                              <option value="" disabled>
+                                                Kies een model
+                                              </option>
+                                              {availableModels.map((option) => (
+                                                <option
+                                                  key={option.value}
+                                                  value={option.value}
+                                                >
+                                                  {option.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <span className="text-xs text-slate-500">
+                                              Voor analyses over alle cliënten.
+                                            </span>
+                                          </label>
+
+                                          <div className="flex justify-end">
+                                            <button
+                                              type="submit"
+                                              disabled={isModelSaving}
+                                              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                                            >
+                                              {isModelSaving
+                                                ? "Opslaan..."
+                                                : "AI-modellen opslaan"}
+                                            </button>
+                                          </div>
+                                        </form>
+                                      )}
+                                    </div>
+
                                     {isCoachPromptLoading ? (
                                       <p className="text-sm text-slate-500">
                                         Coachprompt wordt geladen...
