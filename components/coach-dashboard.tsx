@@ -2179,7 +2179,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                 message
                                               )
                                             }
-                                            className="text-red-400 ml-4 mt-20 flex items-center gap-1.5 underline-offset-2 hover:text-slate-700 hover:underline"
+                                            className="text-red-400 ml-4 flex items-center gap-1.5 underline-offset-2 hover:text-slate-700 hover:underline"
                                           >
                                             <AlertTriangle className="size-3.5" />
                                             Geef feedback
