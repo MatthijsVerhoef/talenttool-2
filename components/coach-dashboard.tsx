@@ -947,14 +947,17 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const coachMessagesRef = useRef<HTMLDivElement | null>(null);
   const overseerMessagesRef = useRef<HTMLDivElement | null>(null);
 
-  const scrollToBottom = useCallback((ref: React.RefObject<HTMLDivElement>) => {
-    if (ref.current) {
-      ref.current.scrollTo({
-        top: ref.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-  }, []);
+  const scrollToBottom = useCallback(
+    (ref: React.RefObject<HTMLDivElement | null>) => {
+      if (ref.current) {
+        ref.current.scrollTo({
+          top: ref.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (activeChannel === "coach") {
@@ -1799,6 +1802,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             focusArea: selectedClient.focusArea,
                             summary: selectedClient.summary,
                             goals: selectedClient.goals.join(", "),
+                            avatarUrl: selectedClient.avatarUrl ?? "",
                           });
                           setEditingClientId(selectedClient.id);
                         } else {

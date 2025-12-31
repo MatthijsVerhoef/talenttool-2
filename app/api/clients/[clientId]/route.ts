@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { updateClientAvatar, updateClientProfile } from "@/lib/data/store";
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: { clientId: string } }
-) {
+type RouteContext = {
+  params: Promise<{
+    clientId: string;
+  }>;
+};
+
+export async function PATCH(request: NextRequest, context: RouteContext) {
   const session = await auth.api.getSession({
     headers: request.headers,
   });
@@ -16,8 +19,10 @@ export async function PATCH(
   }
 
   const payload = await request.json().catch(() => null);
+  const params = await context.params;
   const clientId =
-    params?.clientId ?? (payload && typeof payload === "object"
+    params?.clientId ??
+    (payload && typeof payload === "object"
       ? ((payload as { clientId?: string }).clientId ?? null)
       : null);
 
