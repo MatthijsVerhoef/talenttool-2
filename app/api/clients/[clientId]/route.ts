@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
-import { updateClientProfile } from "@/lib/data/store";
+import { updateClientAvatar, updateClientProfile } from "@/lib/data/store";
 
 export async function PATCH(
   request: Request,
@@ -20,12 +20,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Ongeldig verzoek" }, { status: 400 });
   }
 
-  const { name, focusArea, summary, goals } = payload as {
+  const { name, focusArea, summary, goals, avatarUrl } = payload as {
     name?: string;
     focusArea?: string;
     summary?: string;
     goals?: string[];
+    avatarUrl?: string;
   };
+
+  if (avatarUrl) {
+    const client = await updateClientAvatar(params.clientId, avatarUrl);
+    return NextResponse.json({ client });
+  }
 
   if (!name && !focusArea && !summary && !goals) {
     return NextResponse.json(

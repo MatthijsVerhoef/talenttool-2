@@ -19,6 +19,7 @@ export interface ClientProfile {
   focusArea: string;
   summary: string;
   goals: string[];
+  avatarUrl?: string | null;
 }
 
 export interface ClientDocument {
@@ -81,6 +82,7 @@ export async function getClients(): Promise<ClientProfile[]> {
     focusArea: client.focusArea,
     summary: client.summary,
     goals: client.goals.map((goal) => goal.value),
+    avatarUrl: client.avatarUrl,
   }));
 }
 
@@ -100,6 +102,7 @@ export async function getClient(clientId: string): Promise<ClientProfile | null>
     focusArea: client.focusArea,
     summary: client.summary,
     goals: client.goals.map((goal) => goal.value),
+    avatarUrl: client.avatarUrl,
   };
 }
 
@@ -139,7 +142,44 @@ export async function updateClientProfile(
     focusArea: client.focusArea,
     summary: client.summary,
     goals: client.goals.map((goal) => goal.value),
+    avatarUrl: client.avatarUrl,
   };
+}
+
+export async function updateClientAvatar(
+  clientId: string,
+  avatarUrl: string
+): Promise<ClientProfile> {
+  const client = await prisma.client.update({
+    where: { id: clientId },
+    data: { avatarUrl },
+    include: { goals: true },
+  });
+
+  return {
+    id: client.id,
+    name: client.name,
+    focusArea: client.focusArea,
+    summary: client.summary,
+    goals: client.goals.map((goal) => goal.value),
+    avatarUrl: client.avatarUrl,
+  };
+}
+
+export async function updateUserProfile(
+  userId: string,
+  data: {
+    name?: string;
+    image?: string;
+    avatarAlt?: string;
+  }
+) {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data,
+  });
+
+  return user;
 }
 
 export type MessageSource = "AI" | "HUMAN";
