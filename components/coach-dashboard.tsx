@@ -5,19 +5,28 @@ import { useRouter } from "next/navigation";
 
 import type { LucideIcon } from "lucide-react";
 import {
-  CalendarClock,
   FileText,
   LogOut,
   MessageSquare,
   Paperclip,
-  Send,
   Settings,
   Sparkles,
+  Target,
+  CheckCircle2,
+  Lightbulb,
   UserRound,
 } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 
 import { authClient } from "@/lib/auth-client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 import type {
   AgentMessage,
@@ -57,6 +66,15 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [isCoachLoading, setCoachLoading] = useState(false);
   const [isOverseerLoading, setOverseerLoading] = useState(false);
   const [isDocUploading, setDocUploading] = useState(false);
+  const [activeChannel, setActiveChannel] = useState<"coach" | "meta">("coach");
+  const [isClientDialogOpen, setClientDialogOpen] = useState(false);
+  const [clientForm, setClientForm] = useState({
+    name: "",
+    focusArea: "",
+    summary: "",
+    goals: "",
+  });
+  const [isClientSaving, setClientSaving] = useState(false);
   const [coachPrompt, setCoachPrompt] = useState("");
   const [coachPromptUpdatedAt, setCoachPromptUpdatedAt] = useState<
     string | null
@@ -71,7 +89,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [isOverseerPromptSaving, setOverseerPromptSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSigningOut, setSigningOut] = useState(false);
-  const [isPromptDialogOpen, setPromptDialogOpen] = useState(false);
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === selectedClientId),
@@ -94,6 +111,18 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     void fetchCoachPrompt();
     void fetchOverseerPrompt();
   }, []);
+
+  useEffect(() => {
+    if (!selectedClient || isClientDialogOpen) {
+      return;
+    }
+    setClientForm({
+      name: selectedClient.name,
+      focusArea: selectedClient.focusArea,
+      summary: selectedClient.summary,
+      goals: selectedClient.goals.join(", "),
+    });
+  }, [selectedClient, isClientDialogOpen]);
 
   async function fetchClientHistory(clientId: string) {
     try {
@@ -210,7 +239,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   ) {
     event.preventDefault();
     if (!coachPrompt.trim()) {
-      setError("Prompt mag niet leeg zijn.");
+      setError("Prompt mag niet leeg les zijn.");
       return;
     }
 
@@ -369,6 +398,46 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
   }
 
+  async function handleClientSave(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedClientId) {
+      return;
+    }
+
+    setClientSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/clients/${selectedClientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: clientForm.name,
+          focusArea: clientForm.focusArea,
+          summary: clientForm.summary,
+          goals: clientForm.goals
+            .split(",")
+            .map((goal) => goal.trim())
+            .filter(Boolean),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Bijwerken van cliënt is mislukt.");
+      }
+
+      router.refresh();
+      setClientDialogOpen(false);
+    } catch (updateError) {
+      console.error(updateError);
+      setError(
+        (updateError as Error).message ?? "Bijwerken van cliënt is mislukt."
+      );
+    } finally {
+      setClientSaving(false);
+    }
+  }
+
   const messages = useMemo(
     () => (selectedClientId ? clientHistories[selectedClientId] ?? [] : []),
     [clientHistories, selectedClientId]
@@ -406,87 +475,193 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [selectedClient]);
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      {/* Minimal Sidebar */}
-      <aside className="w-64 border-r border-slate-200 bg-white">
-        <div className="flex h-screen flex-col">
-          {/* User Section */}
-          <div className="border-b border-slate-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
-                {userInitial}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {currentUser.name}
-                </p>
-                <p className="truncate text-xs text-slate-500">
-                  {currentUser.email}
-                </p>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  {isAdmin ? "Admin" : "Coach"}
-                </p>
-              </div>
+    // Used a very flat light grey background for the app container
+    <div className="flex h-screen bg-slate-50 text-slate-900">
+      {/* Sidebar: Flat, bordered, minimal */}
+      <aside className="w-72 border-r border-slate-200 bg-white flex flex-col shrink-0">
+        <div className="p-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            {/* User avatar is now flat */}
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 font-medium text-white">
+              {userInitial}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {currentUser.name}
+              </p>
+              <p className="text-xs text-slate-500">
+                {isAdmin ? "Administrator" : "Coach"}
+              </p>
             </div>
           </div>
+        </div>
 
-          {/* Clients List */}
-          <div className="flex-1 overflow-y-auto p-3">
-            <p className="mb-2 px-2 text-xs font-medium text-slate-500">
-              Cliënten
-            </p>
+        <nav className="flex-1 overflow-y-auto p-4 space-y-8">
+          {/* Clients Section */}
+          <div>
+            <div className="flex items-center justify-between px-2 mb-2">
+              <p className="text-xs font-semibold text-slate-900">Cliënten</p>
+            </div>
             <ul className="space-y-1">
               {clients.map((client) => {
                 const isActive = client.id === selectedClientId;
                 return (
                   <li key={client.id}>
                     <button
-                      type="button"
                       onClick={() => setSelectedClientId(client.id)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition ${
+                      // Active state is a subtle grey background, no shadows or bright colors
+                      className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
                         isActive
-                          ? "bg-slate-900 text-white"
-                          : "text-slate-700 hover:bg-slate-100"
+                          ? "bg-slate-100 text-slate-900"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                       }`}
                     >
-                      <UserRound className="h-4 w-4 flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
-                          {client.name}
-                        </p>
-                        <p
-                          className={`truncate text-xs ${
-                            isActive ? "text-white/70" : "text-slate-500"
-                          }`}
-                        >
-                          {client.focusArea}
-                        </p>
-                      </div>
+                      <UserRound
+                        className={`size-4 ${
+                          isActive ? "text-slate-900" : "text-slate-400"
+                        }`}
+                      />
+                      <span className="truncate text-sm font-medium flex-1">
+                        {client.name}
+                      </span>
                     </button>
                   </li>
                 );
               })}
             </ul>
+          </div>
 
-            {/* Tools */}
-            <p className="mb-2 mt-6 px-2 text-xs font-medium text-slate-500">
+          {/* Tools Section */}
+          <div>
+            <p className="px-2 mb-2 text-xs font-semibold text-slate-900">
               Tools
             </p>
             <ul className="space-y-1">
               {toolLinks.map(({ label, icon: Icon }) => {
                 const restricted = label === "Rapportages" && !isAdmin;
+
+                // Settings with Dialog Logic
+                if (label === "Instellingen") {
+                  if (!isAdmin) return null;
+                  return (
+                    <li key={label}>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900">
+                            <Icon className="size-4 text-slate-400" />
+                            {label}
+                          </button>
+                        </DialogTrigger>
+                        {/* Dialog Content - Flat style */}
+                        <DialogContent className="max-w-2xl border-slate-200 p-6">
+                          <DialogHeader>
+                            <DialogTitle className="text-lg font-semibold">
+                              Systeeminstellingen
+                            </DialogTitle>
+                            <DialogDescription className="text-slate-500">
+                              Beheer de AI prompts voor je coaching workflow.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-6 pt-4">
+                            {isCoachPromptLoading ? (
+                              <p className="text-sm text-slate-500">
+                                Coachprompt wordt geladen...
+                              </p>
+                            ) : (
+                              <form
+                                onSubmit={handleCoachPromptSave}
+                                className="space-y-3"
+                              >
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">
+                                    Coach Prompt
+                                  </p>
+                                  <p className="text-xs text-slate-500">
+                                    Instructies voor de individuele coach.
+                                  </p>
+                                </div>
+                                <textarea
+                                  value={coachPrompt}
+                                  onChange={(event) =>
+                                    setCoachPrompt(event.target.value)
+                                  }
+                                  className="w-full rounded-lg border border-slate-300 p-3 text-sm min-h-[100px] focus:border-slate-400 focus:ring-0 outline-none"
+                                />
+                                <div className="flex items-center justify-between text-xs text-slate-500">
+                                  <p>
+                                    Laatst bijgewerkt:{" "}
+                                    {coachPromptUpdatedAt
+                                      ? new Date(coachPromptUpdatedAt).toLocaleString()
+                                      : "Onbekend"}
+                                  </p>
+                                  <button
+                                    disabled={isCoachPromptSaving}
+                                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
+                                  >
+                                    {isCoachPromptSaving ? "Opslaan..." : "Opslaan"}
+                                  </button>
+                                </div>
+                              </form>
+                            )}
+
+                            {isOverseerPromptLoading ? (
+                              <p className="text-sm text-slate-500">
+                                Overzichtsprompt wordt geladen...
+                              </p>
+                            ) : (
+                              <form
+                                onSubmit={handleOverseerPromptSave}
+                                className="space-y-3"
+                              >
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">
+                                    Overzichtscoach Prompt
+                                  </p>
+                                  <p className="text-xs text-slate-500">
+                                    Richtlijnen voor programma-analyses en trends.
+                                  </p>
+                                </div>
+                                <textarea
+                                  value={overseerPrompt}
+                                  onChange={(event) =>
+                                    setOverseerPrompt(event.target.value)
+                                  }
+                                className="w-full rounded-lg border border-slate-300 p-3 text-sm min-h-[100px] focus:border-slate-400 focus:ring-0 outline-none"
+                                />
+                                <div className="flex items-center justify-between text-xs text-slate-500">
+                                  <p>
+                                    Laatst bijgewerkt:{" "}
+                                    {overseerPromptUpdatedAt
+                                      ? new Date(overseerPromptUpdatedAt).toLocaleString()
+                                      : "Onbekend"}
+                                  </p>
+                                  <button
+                                    disabled={isOverseerPromptSaving}
+                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-500 disabled:opacity-50"
+                                  >
+                                    {isOverseerPromptSaving ? "Opslaan..." : "Opslaan"}
+                                  </button>
+                                </div>
+                              </form>
+                            )}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </li>
+                  );
+                }
+
                 return (
                   <li key={label}>
                     <button
-                      type="button"
                       disabled={restricted}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition ${
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                         restricted
-                          ? "cursor-not-allowed border border-dashed border-slate-200 text-slate-400"
-                          : "hover:bg-slate-100"
+                          ? "text-slate-400 cursor-not-allowed"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                       }`}
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon className="size-4 text-slate-400" />
                       {label}
                     </button>
                   </li>
@@ -494,538 +669,476 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               })}
             </ul>
           </div>
+        </nav>
 
-          {/* Sign Out */}
-          <div className="border-t border-slate-200 p-3">
-            <button
-              type="button"
-              onClick={handleSignOut}
-              disabled={isSigningOut}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
-            >
-              <LogOut className="h-4 w-4" />
-              Uitloggen
-            </button>
-          </div>
+        <div className="p-4 border-t border-slate-100">
+          <button
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+          >
+            <LogOut className="size-4 text-slate-400" />
+            Uitloggen
+          </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-7xl p-6">
-          {/* Header */}
-          <header className="mb-6">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-              <MessageSquare className="h-4 w-4" />
-              Coach kanaal
-            </div>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-              {selectedClient ? selectedClient.name : "Selecteer een cliënt"}
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50">
+        {/* Top Header Bar: Flat, bordered */}
+        <header className="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold text-slate-900">
+              {selectedClient ? selectedClient.name : "Dashboard"}
             </h1>
-          </header>
-
-          {/* Profile & Info Cards */}
-          <div className="mb-6 grid gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <div className="rounded-xl bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-slate-500">
-                      Profiel
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                      {selectedClient ? selectedClient.name : "Nog geen cliënt"}
-                    </h3>
-                  </div>
-                  <UserRound className="h-8 w-8 text-slate-300" />
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                  {selectedClient
-                    ? selectedClient.summary
-                    : "Selecteer een cliënt om achtergrondinformatie te bekijken."}
-                </p>
+            {selectedClient && (
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-100">
+                Actief
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {isAdmin && selectedClient && (
+              <Dialog
+                open={isClientDialogOpen}
+                onOpenChange={(open) => {
+                  setClientDialogOpen(open);
+                  if (open) {
+                    setClientForm({
+                      name: selectedClient.name,
+                      focusArea: selectedClient.focusArea,
+                      summary: selectedClient.summary,
+                      goals: selectedClient.goals.join(", "),
+                    });
+                  }
+                }}
+              >
+                <DialogTrigger asChild>
+                  <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    Cliënt bewerken
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-xl space-y-4">
+                  <DialogHeader>
+                    <DialogTitle>Gegevens van {selectedClient.name}</DialogTitle>
+                    <DialogDescription>
+                      Pas de basisinformatie en doelen van de cliënt aan.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form className="space-y-4" onSubmit={handleClientSave}>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Naam
+                      <input
+                        type="text"
+                        value={clientForm.name}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            name: event.target.value,
+                          }))
+                        }
+                        className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        required
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Focusgebied
+                      <input
+                        type="text"
+                        value={clientForm.focusArea}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            focusArea: event.target.value,
+                          }))
+                        }
+                        className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Samenvatting
+                      <textarea
+                        value={clientForm.summary}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            summary: event.target.value,
+                          }))
+                        }
+                        rows={4}
+                        className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Doelen (gescheiden door komma)
+                      <textarea
+                        value={clientForm.goals}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            goals: event.target.value,
+                          }))
+                        }
+                        rows={3}
+                        className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
+                      />
+                    </label>
+                    <div className="flex justify-end gap-2 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => setClientDialogOpen(false)}
+                        className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
+                      >
+                        Annuleren
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isClientSaving}
+                        className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                      >
+                        {isClientSaving ? "Opslaan..." : "Opslaan"}
+                      </button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+            {error && (
+              <div className="px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 text-xs font-medium rounded-lg">
+                {error}
               </div>
+            )}
+          </div>
+        </header>
 
-              <div className="mt-4 rounded-xl bg-white p-5 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-slate-400" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      AI Coach Feedback
-                    </p>
-                    <p className="text-xs text-slate-500">Laatste inzichten</p>
-                  </div>
+        {/* Scrollable Dashboard Grid */}
+        <div className="flex-1 overflow-y-auto p-8">
+          <div className="max-w-6xl mx-auto space-y-6 pb-12">
+            {/* Context Cards: Flat, white background, thin grey border */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Profile Card */}
+              <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold text-slate-900">
+                    Profiel Samenvatting
+                  </h3>
+                  <UserRound className="size-5 text-slate-400" />
                 </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
-                  {latestCoachFeedback}
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  {selectedClient?.summary || "Selecteer een cliënt."}
                 </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="rounded-xl bg-white p-5 shadow-sm">
-                <p className="text-sm font-semibold text-slate-900">
-                  Sterktes & Aandachtspunten
-                </p>
-                <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                  {strengthsAndWatchouts.map((item) => (
-                    <li key={item} className="flex gap-2">
-                      <span className="mt-1.5 size-1.5 flex-shrink-0 rounded-full bg-slate-400" />
-                      <span>{item}</span>
-                    </li>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {selectedClient?.focusArea.split(",").map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium border border-slate-200 capitalize"
+                    >
+                      {tag.trim()}
+                    </span>
                   ))}
+                </div>
+              </div>
+
+              {/* Goals Card - Flat white instead of colored block */}
+              <div className="bg-white rounded-xl border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold text-slate-900">
+                    Doelen
+                  </h3>
+                  <Target className="size-5 text-slate-400" />
+                </div>
+                <ul className="space-y-3">
+                  {selectedClient?.goals.length ? (
+                    selectedClient.goals.map((goal, i) => (
+                      <li
+                        key={i}
+                        className="text-sm flex gap-3 items-start text-slate-700"
+                      >
+                        <span className="font-medium text-slate-400">
+                          {i + 1}.
+                        </span>
+                        <span className="leading-tight">{goal}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500 italic">
+                      Geen doelen ingesteld.
+                    </p>
+                  )}
                 </ul>
               </div>
-
-              <div className="rounded-xl bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900">Doelen</p>
-                  <CalendarClock className="h-5 w-5 text-slate-300" />
-                </div>
-                {selectedClient && selectedClient.goals.length > 0 ? (
-                  <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                    {selectedClient.goals.map((goal) => (
-                      <li key={goal} className="flex gap-2">
-                        <span className="mt-1.5 size-1.5 flex-shrink-0 rounded-full bg-slate-400" />
-                        <span>{goal}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-3 text-sm text-slate-500">
-                    Nog geen doelen geregistreerd.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Chat & Reports */}
-          <div className="grid gap-4 lg:grid-cols-3">
-            {/* Chat Section */}
-            <div className="lg:col-span-2">
-              <div className="rounded-xl bg-white shadow-sm">
-                <div className="border-b border-slate-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-slate-500">
-                        Coach Assistent
-                      </p>
-                      <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                        {selectedClient ? selectedClient.name : "Geen cliënt"}
-                      </h3>
-                    </div>
-                    {isCoachLoading && (
-                      <span className="text-xs text-blue-600">
-                        Aan het typen...
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Chat Messages - Fixed Height with Scroll */}
-                <div className="h-96 overflow-y-auto p-4">
-                  <div className="space-y-3">
-                    {messages.length === 0 ? (
-                      <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
-                        Start een gesprek met de coach assistent.
-                      </div>
-                    ) : (
-                      messages.map((message) => {
-                        const isAssistant =
-                          message.role === "assistant" ||
-                          message.role === "system";
-                        return (
-                          <div
-                            key={message.id}
-                            className={`flex ${
-                              isAssistant ? "justify-start" : "justify-end"
-                            }`}
-                          >
-                            <div
-                              className={`max-w-[85%] rounded-lg px-4 py-2 text-sm ${
-                                isAssistant
-                                  ? "bg-slate-100 text-slate-900"
-                                  : "bg-blue-600 text-white"
-                              }`}
-                            >
-                              <p className="text-xs opacity-70">
-                                {message.role}
-                              </p>
-                              <p className="mt-1 whitespace-pre-wrap">
-                                {message.content}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
-                {/* Input Form */}
-                <form
-                  onSubmit={handleCoachSubmit}
-                  className="border-t border-slate-200 p-4"
-                >
-                  <textarea
-                    value={coachInput}
-                    onChange={(e) => setCoachInput(e.target.value)}
-                    placeholder="Stel een vraag..."
-                    disabled={!selectedClient || isCoachLoading}
-                    className="w-full resize-none rounded-lg border border-slate-200 p-3 text-sm focus:border-blue-500 focus:outline-none disabled:opacity-60"
-                    rows={2}
-                  />
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      ref={attachmentInputRef}
-                      type="file"
-                      className="sr-only"
-                      onChange={handleAttachmentChange}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAttachmentButtonClick}
-                      disabled={!selectedClient || isDocUploading}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      <Paperclip className="h-4 w-4" />
-                      {isDocUploading ? "Uploaden..." : "Bijlage"}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={
-                        !selectedClient || !coachInput.trim() || isCoachLoading
-                      }
-                      className="ml-auto inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
-                    >
-                      <Send className="h-4 w-4" />
-                      Versturen
-                    </button>
-                  </div>
-                </form>
-
-                {/* Documents */}
-                {selectedClient && (
-                  <div className="border-t border-slate-200 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Documenten
-                      </p>
-                      {isDocUploading && (
-                        <span className="text-xs text-slate-500">
-                          Uploaden…
-                        </span>
-                      )}
-                    </div>
-                    {documents.length === 0 ? (
-                      <p className="text-sm text-slate-500">
-                        Nog geen bestanden.
-                      </p>
-                    ) : (
-                      <div className="max-h-40 space-y-2 overflow-y-auto">
-                        {documents.map((doc) => (
-                          <div
-                            key={doc.id}
-                            className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-slate-900">
-                                  {doc.originalName}
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                  {(doc.size / 1024).toFixed(1)} KB
-                                </p>
-                              </div>
-                              <span className="whitespace-nowrap rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                                {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
 
-            {/* Reports Sidebar */}
-            {isAdmin ? (
-              <div className="rounded-xl bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-slate-500">
-                      Rapportages
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                      Exports
-                    </h3>
-                  </div>
-                  <FileText className="h-5 w-5 text-slate-300" />
-                </div>
-                <div className="mt-4 max-h-96 space-y-2 overflow-y-auto">
-                  {!selectedClient ? (
-                    <p className="text-sm text-slate-500">
-                      Selecteer een cliënt om exports te bekijken.
-                    </p>
-                  ) : documents.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      Geen documenten geüpload voor deze cliënt.
-                    </p>
-                  ) : (
-                    documents.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2"
-                      >
-                        <div className="min-w-0 flex-1 pr-3">
-                          <p className="truncate text-sm font-semibold text-slate-900">
-                            {doc.originalName}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {(doc.size / 1024).toFixed(1)} KB · {" "}
-                            {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
-                          </p>
-                        </div>
-                        <div className="text-right text-xs text-slate-500">
-                          <p>{new Date(doc.createdAt).toLocaleDateString()}</p>
-                          {doc.audioDuration && (
-                            <p className="text-[11px] text-slate-400">
-                              {doc.audioDuration.toFixed(1)} s
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <p className="mt-4 text-xs text-slate-500">
-                  Admins kunnen exports downloaden of delen als context voor AI.
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-xl bg-white p-5 text-sm text-slate-500 shadow-sm">
-                <p className="text-xs font-medium text-slate-500">
-                  Rapportages
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                  Beperkte toegang
-                </h3>
-                <p className="mt-2">
-                  Alleen admins kunnen exports van cliënten bekijken en beheren.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Overseer & Prompts */}
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            {/* Overseer */}
-            <div className="rounded-xl bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-slate-500">
-                    Overzichtscoach
-                  </p>
-                  <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                    Programma Analyse
-                  </h3>
-                </div>
-                {isOverseerLoading && (
-                  <span className="text-xs text-purple-600">Analyseren...</span>
-                )}
-              </div>
-              <div className="mt-4 h-48 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-                {overseerThread.length === 0 ? (
-                  <p className="text-sm text-slate-500">
-                    Vraag de overzichtscoach om trends of risico&#39;s.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {overseerThread.map((message) => (
-                      <li
-                        key={message.id}
-                        className={`rounded-lg border px-3 py-2 text-sm ${
-                          message.role === "assistant"
-                            ? "border-purple-200 bg-white text-slate-900"
-                            : "border-slate-200 bg-white"
-                        }`}
-                      >
-                        <p className="text-xs uppercase text-slate-500">
-                          {message.role}
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap">
-                          {message.content}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <form onSubmit={handleOverseerSubmit} className="mt-4 space-y-3">
-                <textarea
-                  value={overseerInput}
-                  onChange={(e) => setOverseerInput(e.target.value)}
-                  placeholder="Vraag naar trends, risico&#39;s..."
-                  disabled={isOverseerLoading}
-                  className="w-full resize-none rounded-lg border border-slate-200 p-3 text-sm focus:border-purple-500 focus:outline-none disabled:opacity-60"
-                  rows={2}
-                />
-                <button
-                  type="submit"
-                  disabled={!overseerInput.trim() || isOverseerLoading}
-                  className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-40"
-                >
-                  <Send className="h-4 w-4" />
-                  Verstuur
-                </button>
-              </form>
-            </div>
-
-            {/* Prompt Management */}
-            {isAdmin ? (
-              <div className="rounded-xl bg-white p-5 shadow-sm">
-                <div>
-                  <p className="text-xs font-medium text-slate-500">
-                    Promptbeheer
-                  </p>
-                  <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                    Systeeminstructies
-                  </h3>
-                  <p className="mt-2 text-sm text-slate-500">
-                    Beheer de prompts waarmee de AI-coaches hun antwoorden vormen.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPromptDialogOpen(true)}
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Instellingen openen
-                </button>
-              </div>
-            ) : (
-              <div className="rounded-xl bg-white p-5 text-sm text-slate-500 shadow-sm">
-                <p className="text-xs font-medium text-slate-500">
-                  Promptbeheer
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                  Beperkte toegang
-                </h3>
-                <p className="mt-2">
-                  Alleen admins kunnen de systeem- en overzichtsprompts aanpassen.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Error Display */}
-          {error && (
-            <div className="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {error}
-            </div>
-          )}
-          {isAdmin && isPromptDialogOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-              <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-slate-500">
-                      Promptbeheer
-                    </p>
-                    <h3 className="text-xl font-semibold text-slate-900">
-                      Systeeminstructies beheren
-                    </h3>
-                  </div>
+            {/* Bottom Row: Chat Area and Insights Sidebar */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+              {/* Main Chat Interface */}
+              <div className="lg:col-span-2 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden h-[600px]">
+                <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-4 bg-white">
                   <button
-                    type="button"
-                    onClick={() => setPromptDialogOpen(false)}
-                    className="rounded-lg bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                    onClick={() => setActiveChannel("coach")}
+                    className={`text-sm font-medium transition-colors ${
+                      activeChannel === "coach"
+                        ? "text-slate-900"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
                   >
-                    Sluiten
+                    Coach Assistent
+                  </button>
+                  <button
+                    onClick={() => setActiveChannel("meta")}
+                    className={`text-sm font-medium transition-colors ${
+                      activeChannel === "meta"
+                        ? "text-slate-900"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    Meta AI Twin
                   </button>
                 </div>
-                <div className="space-y-6">
-                  {isCoachPromptLoading ? (
-                    <p className="text-sm text-slate-500">
-                      Coachprompt wordt geladen...
-                    </p>
-                  ) : (
-                    <form onSubmit={handleCoachPromptSave} className="space-y-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          Prompt voor coach
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Individuele analyses en gesprekken.
-                        </p>
+
+                {activeChannel === "coach" ? (
+                  <>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white">
+                      {messages.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                          <MessageSquare className="size-6 mb-2 opacity-50" />
+                          <p className="text-sm">Start een gesprek.</p>
+                        </div>
+                      ) : (
+                        messages.map((message) => {
+                          const isAi =
+                            message.role === "assistant" ||
+                            message.role === "system";
+                          return (
+                            <div
+                              key={message.id}
+                              className={`flex ${
+                                isAi ? "justify-start" : "justify-end"
+                              }`}
+                            >
+                              <div
+                                className={`max-w-[85%] px-4 py-3 rounded-xl text-sm leading-relaxed ${
+                                  isAi
+                                    ? "bg-slate-50 border border-slate-200 text-slate-800"
+                                    : "bg-indigo-600 text-white"
+                                }`}
+                              >
+                                <p className="whitespace-pre-wrap">
+                                  {message.content}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <form
+                      onSubmit={handleCoachSubmit}
+                      className="p-4 bg-white border-t border-slate-200"
+                    >
+                      <div className="relative flex gap-2">
+                        <textarea
+                          value={coachInput}
+                          onChange={(event) => setCoachInput(event.target.value)}
+                          placeholder="Schrijf een bericht..."
+                          className="flex-1 p-3 bg-white border border-slate-300 rounded-lg text-sm focus:border-slate-400 focus:ring-0 resize-none placeholder:text-slate-400"
+                          rows={1}
+                          style={{ minHeight: "44px", maxHeight: "120px" }}
+                        />
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handleAttachmentButtonClick}
+                            className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                          >
+                            <Paperclip className="size-5" />
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={!selectedClient || isCoachLoading}
+                            className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors font-medium text-sm"
+                          >
+                            Versturen
+                          </button>
+                        </div>
                       </div>
-                      <textarea
-                        value={coachPrompt}
-                        onChange={(e) => setCoachPrompt(e.target.value)}
-                        rows={5}
-                        className="w-full rounded-lg border border-slate-200 p-3 text-sm focus:border-emerald-500 focus:outline-none"
-                        placeholder="Beschrijf hoe de AI-coach zich moet gedragen..."
+                      <input
+                        ref={attachmentInputRef}
+                        type="file"
+                        className="sr-only"
+                        onChange={handleAttachmentChange}
                       />
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <p>
-                          {coachPromptUpdatedAt
-                            ? new Date(coachPromptUpdatedAt).toLocaleString()
-                            : "Standaard"}
-                        </p>
-                        <button
-                          type="submit"
-                          disabled={isCoachPromptSaving}
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
-                        >
-                          {isCoachPromptSaving ? "Opslaan..." : "Opslaan"}
-                        </button>
-                      </div>
                     </form>
-                  )}
-                  {isOverseerPromptLoading ? (
-                    <p className="text-sm text-slate-500">
-                      Overzichtsprompt wordt geladen...
-                    </p>
-                  ) : (
-                    <form onSubmit={handleOverseerPromptSave} className="space-y-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          Prompt voor overzichtscoach
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Programma-analyses en trends.
-                        </p>
+                    {selectedClient && (
+                      <div className="border-t border-slate-200 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <p className="text-sm font-semibold text-slate-900">
+                            Documenten
+                          </p>
+                          {isDocUploading && (
+                            <span className="text-xs text-slate-500">
+                              Uploaden…
+                            </span>
+                          )}
+                        </div>
+                        {documents.length === 0 ? (
+                          <p className="text-sm text-slate-500">
+                            Nog geen bestanden.
+                          </p>
+                        ) : (
+                          <div className="max-h-40 space-y-2 overflow-y-auto">
+                            {documents.map((doc) => (
+                              <div
+                                key={doc.id}
+                                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium text-slate-900">
+                                      {doc.originalName}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      {(doc.size / 1024).toFixed(1)} KB
+                                    </p>
+                                  </div>
+                                  <span className="whitespace-nowrap rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                    {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-white">
+                      {overseerThread.length === 0 ? (
+                        <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+                          Vraag de overzichtscoach om trends of risico&#39;s.
+                        </div>
+                      ) : (
+                        overseerThread.map((message) => (
+                          <div
+                            key={message.id}
+                            className={`rounded-lg border px-3 py-2 text-sm ${
+                              message.role === "assistant"
+                                ? "border-purple-200 bg-white text-slate-900"
+                                : "border-slate-200 bg-white"
+                            }`}
+                          >
+                            <p className="text-xs uppercase text-slate-500">
+                              {message.role}
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap">
+                              {message.content}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <form
+                      onSubmit={handleOverseerSubmit}
+                      className="p-4 bg-white border-t border-slate-200"
+                    >
                       <textarea
-                        value={overseerPrompt}
-                        onChange={(e) => setOverseerPrompt(e.target.value)}
-                        rows={5}
-                        className="w-full rounded-lg border border-slate-200 p-3 text-sm focus:border-purple-500 focus:outline-none"
-                        placeholder="Beschrijf de focus voor de overzichtscoach..."
+                        value={overseerInput}
+                        onChange={(event) => setOverseerInput(event.target.value)}
+                        placeholder="Vraag naar trends, risico&#39;s..."
+                        disabled={isOverseerLoading}
+                        className="w-full resize-none rounded-lg border border-slate-300 p-3 text-sm focus:border-purple-500 focus:ring-0 placeholder:text-slate-400"
+                        rows={2}
                       />
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <p>
-                          {overseerPromptUpdatedAt
-                            ? new Date(overseerPromptUpdatedAt).toLocaleString()
-                            : "Standaard"}
-                        </p>
-                        <button
-                          type="submit"
-                          disabled={isOverseerPromptSaving}
-                          className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-40"
-                        >
-                          {isOverseerPromptSaving ? "Opslaan..." : "Opslaan"}
-                        </button>
-                      </div>
+                      <button
+                        type="submit"
+                        disabled={!overseerInput.trim() || isOverseerLoading}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-40"
+                      >
+                        Verstuur
+                      </button>
                     </form>
-                  )}
+                  </>
+                )}
+              </div>
+
+              {/* Insights and Documents Sidebar: Flat cards */}
+              <div className="space-y-6">
+                {/* AI Insights Panel - Removed amber styling, kept it flat white */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Lightbulb className="size-5 text-slate-400" />
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Laatste Inzicht
+                    </h3>
+                  </div>
+                  <p className="text-sm text-slate-600 italic leading-relaxed">
+                    {latestCoachFeedback}
+                  </p>
+                </div>
+
+                {/* Growth Checklist */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <CheckCircle2 className="size-5 text-slate-400" />
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Sterktes & Aandachtspunten
+                    </h3>
+                  </div>
+                  <ul className="space-y-3">
+                    {strengthsAndWatchouts.map((item, idx) => (
+                      <li
+                        key={idx}
+                        className="flex gap-3 text-sm text-slate-700"
+                      >
+                        <div className="mt-1.5 size-1.5 rounded-full bg-slate-300 shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Documents Panel */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <FileText className="size-5 text-slate-400" />
+                      <h3 className="text-base font-semibold text-slate-900">
+                        Documenten
+                      </h3>
+                    </div>
+                    <button
+                      onClick={handleAttachmentButtonClick}
+                      className="text-indigo-600 text-sm font-medium hover:underline"
+                    >
+                      Uploaden
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {documents.length > 0 ? (
+                      documents.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <FileText className="size-4 text-slate-400" />
+                          <span className="text-sm font-medium text-slate-700 truncate flex-1">
+                            {doc.name}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-slate-500 italic py-2">
+                        Geen documenten.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </main>
     </div>

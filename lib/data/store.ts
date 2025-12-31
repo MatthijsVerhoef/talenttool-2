@@ -103,6 +103,45 @@ export async function getClient(clientId: string): Promise<ClientProfile | null>
   };
 }
 
+export async function updateClientProfile(
+  clientId: string,
+  data: {
+    name?: string;
+    focusArea?: string;
+    summary?: string;
+    goals?: string[];
+  }
+): Promise<ClientProfile> {
+  const updateData: Prisma.ClientUpdateInput = {
+    ...(data.name ? { name: data.name } : {}),
+    ...(data.focusArea ? { focusArea: data.focusArea } : {}),
+    ...(data.summary ? { summary: data.summary } : {}),
+  };
+
+  if (data.goals) {
+    updateData.goals = {
+      deleteMany: {},
+      create: data.goals
+        .filter((goal) => goal.trim().length > 0)
+        .map((goal) => ({ value: goal.trim() })),
+    };
+  }
+
+  const client = await prisma.client.update({
+    where: { id: clientId },
+    data: updateData,
+    include: { goals: true },
+  });
+
+  return {
+    id: client.id,
+    name: client.name,
+    focusArea: client.focusArea,
+    summary: client.summary,
+    goals: client.goals.map((goal) => goal.value),
+  };
+}
+
 export type MessageSource = "AI" | "HUMAN";
 
 export async function appendClientMessage(
