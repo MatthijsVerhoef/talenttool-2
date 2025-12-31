@@ -711,9 +711,219 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           </button>
                         </DialogTrigger>
 
-                        {/* keep your DialogContent as-is */}
                         <DialogContent className="max-w-3xl border-none bg-transparent p-0 shadow-none sm:max-w-3xl">
-                          {/* ... unchanged */}
+                          <div className="flex h-[520px] max-h-[85vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl md:flex-row">
+                            <div className="w-full border-b border-slate-100 bg-slate-50/80 p-4 md:w-[220px] md:border-b-0 md:border-r md:p-6">
+                              <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Instellingen
+                              </p>
+                              <div className="flex flex-row flex-wrap gap-2 md:flex-col md:flex-nowrap">
+                                {settingsSections.map((section) => {
+                                  const isActive =
+                                    section.id === activeSettingsTab;
+                                  return (
+                                    <button
+                                      key={section.id}
+                                      type="button"
+                                      onClick={() =>
+                                        setActiveSettingsTab(section.id)
+                                      }
+                                      className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                                        isActive
+                                          ? "border-slate-200 bg-white text-slate-900"
+                                          : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900"
+                                      }`}
+                                    >
+                                      {section.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="flex flex-1 flex-col bg-gradient-to-b from-white to-slate-50/50">
+                              <div className="border-b border-slate-100 p-6">
+                                <DialogTitle className="text-lg font-semibold text-slate-900">
+                                  {activeSettings?.title}
+                                </DialogTitle>
+                                {activeSettings?.description && (
+                                  <DialogDescription className="text-slate-500">
+                                    {activeSettings.description}
+                                  </DialogDescription>
+                                )}
+                              </div>
+                              <div className="flex-1 overflow-y-auto p-6">
+                                {activeSettingsTab === "profile" && (
+                                  <form
+                                    onSubmit={handleUserSave}
+                                    className="space-y-4"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="size-12 overflow-hidden rounded-full bg-slate-100">
+                                        {userAvatarFile ? (
+                                          <>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={URL.createObjectURL(
+                                                userAvatarFile
+                                              )}
+                                              alt="Nieuwe avatar"
+                                              className="size-12 object-cover"
+                                            />
+                                          </>
+                                        ) : currentUser.image ? (
+                                          <Image
+                                            src={currentUser.image}
+                                            alt={currentUser.name}
+                                            width={48}
+                                            height={48}
+                                            className="size-12 object-cover"
+                                            unoptimized
+                                          />
+                                        ) : (
+                                          <UserRound className="size-5 text-slate-400" />
+                                        )}
+                                      </div>
+                                      <label className="text-xs font-medium text-slate-600">
+                                        Profielfoto
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="mt-1 text-xs"
+                                          onChange={(event) =>
+                                            setUserAvatarFile(
+                                              event.target.files?.[0] ?? null
+                                            )
+                                          }
+                                        />
+                                      </label>
+                                    </div>
+                                    <label className="flex flex-col gap-1 text-sm">
+                                      Naam
+                                      <input
+                                        type="text"
+                                        value={userForm.name}
+                                        onChange={(event) =>
+                                          setUserForm((form) => ({
+                                            ...form,
+                                            name: event.target.value,
+                                          }))
+                                        }
+                                        className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                                        required
+                                      />
+                                    </label>
+                                    <p className="text-xs text-slate-500">
+                                      Ingelogd als {currentUser.email}
+                                    </p>
+                                    <button
+                                      type="submit"
+                                      disabled={isUserSaving}
+                                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                                    >
+                                      {isUserSaving ? "Opslaan..." : "Opslaan"}
+                                    </button>
+                                  </form>
+                                )}
+                                {activeSettingsTab === "prompts" && isAdmin && (
+                                  <div className="space-y-6">
+                                    {isCoachPromptLoading ? (
+                                      <p className="text-sm text-slate-500">
+                                        Coachprompt wordt geladen...
+                                      </p>
+                                    ) : (
+                                      <form
+                                        onSubmit={handleCoachPromptSave}
+                                        className="space-y-3"
+                                      >
+                                        <div>
+                                          <p className="text-sm font-medium text-slate-900">
+                                            Coach Prompt
+                                          </p>
+                                          <p className="text-xs text-slate-500">
+                                            Instructies voor de individuele
+                                            coach.
+                                          </p>
+                                        </div>
+                                        <textarea
+                                          value={coachPrompt}
+                                          onChange={(event) =>
+                                            setCoachPrompt(event.target.value)
+                                          }
+                                          className="min-h-[100px] w-full rounded-lg border border-slate-300 p-3 text-sm focus:border-slate-400 focus:ring-0 outline-none"
+                                        />
+                                        <div className="flex items-center justify-between text-xs text-slate-500">
+                                          <p>
+                                            Laatst bijgewerkt:{" "}
+                                            {coachPromptUpdatedAt
+                                              ? new Date(
+                                                  coachPromptUpdatedAt
+                                                ).toLocaleString()
+                                              : "Onbekend"}
+                                          </p>
+                                          <button
+                                            disabled={isCoachPromptSaving}
+                                            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                                          >
+                                            {isCoachPromptSaving
+                                              ? "Opslaan..."
+                                              : "Opslaan"}
+                                          </button>
+                                        </div>
+                                      </form>
+                                    )}
+
+                                    {isOverseerPromptLoading ? (
+                                      <p className="text-sm text-slate-500">
+                                        Overzichtsprompt wordt geladen...
+                                      </p>
+                                    ) : (
+                                      <form
+                                        onSubmit={handleOverseerPromptSave}
+                                        className="space-y-3"
+                                      >
+                                        <div>
+                                          <p className="text-sm font-medium text-slate-900">
+                                            Overzichtscoach Prompt
+                                          </p>
+                                          <p className="text-xs text-slate-500">
+                                            Richtlijnen voor programma-analyses
+                                            en trends.
+                                          </p>
+                                        </div>
+                                        <textarea
+                                          value={overseerPrompt}
+                                          onChange={(event) =>
+                                            setOverseerPrompt(
+                                              event.target.value
+                                            )
+                                          }
+                                          className="min-h-[100px] w-full rounded-lg border border-slate-300 p-3 text-sm focus:border-slate-400 focus:ring-0 outline-none"
+                                        />
+                                        <div className="flex items-center justify-between text-xs text-slate-500">
+                                          <p>
+                                            Laatst bijgewerkt:{" "}
+                                            {overseerPromptUpdatedAt
+                                              ? new Date(
+                                                  overseerPromptUpdatedAt
+                                                ).toLocaleString()
+                                              : "Onbekend"}
+                                          </p>
+                                          <button
+                                            disabled={isOverseerPromptSaving}
+                                            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+                                          >
+                                            {isOverseerPromptSaving
+                                              ? "Opslaan..."
+                                              : "Opslaan"}
+                                          </button>
+                                        </div>
+                                      </form>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </DialogContent>
                       </Dialog>
                     </li>
@@ -1070,7 +1280,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                     </div>
                     <form
                       onSubmit={handleCoachSubmit}
-                      className="p-4 bg-white border-t border-slate-200"
+                      className="p-4 bg-white pt-2 border-slate-200"
                     >
                       <div className="relative flex gap-2">
                         <textarea
