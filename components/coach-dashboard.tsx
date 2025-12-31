@@ -1014,15 +1014,15 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           {/* Header */}
           <div className="">
             <div className="flex items-center gap-3 px-4 pt-4 pb-2">
-            <div className="size-9 shrink-0 rounded-xl bg-slate-900 text-white overflow-hidden ring-1 ring-slate-900/10">
-              {displayUser.image ? (
-                <Image
-                  src={displayUser.image}
-                  alt={displayUser.name}
-                  width={36}
-                  height={36}
-                  className="size-9 object-cover"
-                  unoptimized
+              <div className="size-9 shrink-0 rounded-full bg-slate-900 text-white overflow-hidden ring-1 ring-slate-900/10">
+                {displayUser.image ? (
+                  <Image
+                    src={displayUser.image}
+                    alt={displayUser.name}
+                    width={36}
+                    height={36}
+                    className="size-9 object-cover"
+                    unoptimized
                   />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center text-sm font-semibold">
@@ -1031,14 +1031,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 )}
               </div>
 
-            <div className="min-w-0 leading-tight">
-              <p className="truncate text-sm font-semibold text-slate-900">
-                {displayUser.name}
-              </p>
-              <p className="text-xs text-slate-500">
-                {isAdmin ? "Administrator" : "Coach"}
-              </p>
-            </div>
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-sm font-semibold text-slate-900">
+                  {displayUser.name}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {isAdmin ? "Administrator" : "Coach"}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1216,7 +1216,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               </div>
 
               <ul className="space-y-1">
-              {clientList.map((client) => {
+                {clientList.map((client) => {
                   const isActive = client.id === selectedClientId;
 
                   return (
@@ -1234,7 +1234,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             : "text-slate-700",
                         ].join(" ")}
                       >
-                      <div className="size-8 rounded-full overflow-hidden bg-white ring-1 ring-slate-200/70 flex items-center justify-center">
+                        <div className="size-8 rounded-full overflow-hidden bg-white ring-1 ring-slate-200/70 flex items-center justify-center">
                           {client.avatarUrl ? (
                             <Image
                               src={client.avatarUrl}
@@ -1366,21 +1366,21 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                 className="size-16 object-cover"
                                               />
                                             </>
-                                        ) : displayUser.image ? (
-                                          <Image
-                                            src={displayUser.image}
-                                            alt={displayUser.name}
-                                            width={64}
-                                            height={64}
-                                            className="size-16 object-cover"
-                                            unoptimized
-                                          />
-                                        ) : displayUser.name ? (
-                                          <span className="text-base font-semibold">
-                                            {getInitials(displayUser.name)}
-                                          </span>
-                                        ) : (
-                                          <UserRound className="size-6 text-slate-400" />
+                                          ) : displayUser.image ? (
+                                            <Image
+                                              src={displayUser.image}
+                                              alt={displayUser.name}
+                                              width={64}
+                                              height={64}
+                                              className="size-16 object-cover"
+                                              unoptimized
+                                            />
+                                          ) : displayUser.name ? (
+                                            <span className="text-base font-semibold">
+                                              {getInitials(displayUser.name)}
+                                            </span>
+                                          ) : (
+                                            <UserRound className="size-6 text-slate-400" />
                                           )}
                                         </div>
                                         <div>
@@ -1407,12 +1407,12 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                               Kies bestand
                                             </label>
                                             <span className="text-xs text-slate-500">
-                                            {userAvatarFile
-                                              ? userAvatarFile.name
-                                              : displayUser.image
-                                              ? "Huidige foto ingesteld"
-                                              : "Geen bestand geselecteerd"}
-                                          </span>
+                                              {userAvatarFile
+                                                ? userAvatarFile.name
+                                                : displayUser.image
+                                                ? "Huidige foto ingesteld"
+                                                : "Geen bestand geselecteerd"}
+                                            </span>
                                           </div>
                                           <p className="mt-1 text-[11px] text-slate-500">
                                             PNG of JPG, maximaal 5 MB.
@@ -1435,7 +1435,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                         />
                                       </label>
                                       <p className="text-xs text-slate-500">
-                                      Ingelogd als {displayUser.email}
+                                        Ingelogd als {displayUser.email}
                                       </p>
                                       <button
                                         type="submit"
