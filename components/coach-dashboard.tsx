@@ -1025,12 +1025,12 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         className="absolute top-0 left-0 w-screen h-screen -z-1"
       />
       {/* Used a very flat light grey background for the app container */}
-      <div className="relative flex h-screen max-h-screen w-full overflow-hidden text-slate-900">
+      <div className="relative flex  h-screen max-h-screen w-full overflow-hidden text-slate-900">
         {/* Sidebar: Flat, bordered, minimal */}
-        <aside className="w-72 shrink-0 bg-white/40 backdrop-blur flex flex-col">
+        <aside className="w-72 shrink-0 py-8 flex flex-col">
           {/* Header */}
           <div className="">
-            <div className="flex items-center gap-3 px-3 pt-4 pb-2">
+            <div className="flex items-center gap-3 px-3">
               <div className="size-9 shrink-0 rounded-full bg-slate-900 text-white overflow-hidden ring-1 ring-slate-900/10">
                 {displayUser.image ? (
                   <Image
@@ -1486,10 +1486,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             </div>
           </nav>
 
-          <div className="px-4">
-            <div className="h-px bg-slate-200/60" />
-          </div>
-
           {/* Footer */}
           <div className="p-3">
             <button
@@ -1820,45 +1816,53 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             </div>
           ) : (
             <>
-              {/* Scrollable Dashboard Grid */}
-              <div className="relative flex-1 overflow-y-auto">
-                <div className="flex items-center gap-0 w-fit absolute top-3 left-3 rounded-full bg-white/40 backdrop-blur-2xl z-99 p-1 shadow-inner">
-                  <button
-                    onClick={() => setActiveChannel("coach")}
-                    className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition ${
-                      activeChannel === "coach"
-                        ? "bg-white shadow"
-                        : "text-muted-foregroun hover:text-slate-700"
-                    }`}
-                  >
-                    Coach Assistent
-                  </button>
-                  <button
-                    onClick={() => setActiveChannel("meta")}
-                    className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition ${
-                      activeChannel === "meta"
-                        ? "bg-white shadow"
-                        : "text-muted-foreground hover:text-slate-700"
-                    }`}
-                  >
-                    Meta AI Twin
-                  </button>
-                </div>
-                <div className="relative z-10 mx-auto flex max-w-8xl flex-col lg:flex-row">
-                  <section className="flex flex-1 flex-col gap-6">
-                    <div className="relative flex min-h-[70vh] max-h-screen flex-col overflow-y-auto rounded-none">
+              <div className="relative flex-1 min-h-0 overflow-hidden p-2">
+                <div className="flex h-full min-h-0 gap-4 rounded-[36px] backdrop-blur-3xl bg-white/30 border border-white/30 p-4 text-sm text-slate-800">
+                  {" "}
+                  <section className="flex flex-1 min-h-0 flex-col rounded-2xl">
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground">
+                          Coach canvas
+                        </p>
+                        <h2 className="text-lg font-semibold text-slate-900">
+                          {selectedClient?.name ?? "Selecteer een cliënt"}
+                        </h2>
+                      </div>
+                      <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 p-1 text-xs font-medium text-slate-600">
+                        <button
+                          onClick={() => setActiveChannel("coach")}
+                          className={`rounded-full px-4 py-1 transition ${
+                            activeChannel === "coach"
+                              ? "bg-white text-slate-900 shadow"
+                              : "hover:text-slate-900"
+                          }`}
+                        >
+                          Coach assistent
+                        </button>
+                        <button
+                          onClick={() => setActiveChannel("meta")}
+                          className={`rounded-full px-4 py-1 transition ${
+                            activeChannel === "meta"
+                              ? "bg-white text-slate-900 shadow"
+                              : "hover:text-slate-900"
+                          }`}
+                        >
+                          Meta twin
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex min-h-0 flex-1 flex-col">
                       {activeChannel === "coach" ? (
                         <>
                           <div
                             ref={coachMessagesRef}
-                            className="flex-1 pt-24 pb-50 space-y-4 overflow-y-auto px-24 py-8"
+                            className="flex-1 space-y-3 overflow-y-auto px-5 py-5"
                           >
                             {messages.length === 0 ? (
-                              <div className="flex h-full flex-col items-center justify-center text-slate-400">
-                                <MessageSquare className="mb-3 size-6 opacity-70" />
-                                <p className="text-sm">
-                                  Start een gesprek en vul het canvas.
-                                </p>
+                              <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                                <MessageSquare className="size-5" />
+                                <p>Start een gesprek met je cliënt.</p>
                               </div>
                             ) : (
                               messages.map((message) => {
@@ -1873,10 +1877,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                     }`}
                                   >
                                     <div
-                                      className={`max-w-[85%] rounded-3xl border px-5 py-3 text-sm leading-relaxed shadow ${
+                                      className={`max-w-[75%] rounded-3xl p-3 leading-relaxed ${
                                         isAi
-                                          ? "border-white/60 bg-white/80 rounded-tl-lg text-slate-900"
-                                          : "border-transparent bg-indigo-600/95 rounded-tr-lg text-white"
+                                          ? "shadow-sm bg-white text-slate-900"
+                                          : "bg-[#222222] text-white"
                                       }`}
                                     >
                                       <p className="whitespace-pre-wrap">
@@ -1885,7 +1889,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                       {isAdmin &&
                                         message.role === "assistant" &&
                                         isAi && (
-                                          <div className="mt-2 text-[11px]">
+                                          <div className="mt-2 text-[10px]">
                                             <button
                                               type="button"
                                               onClick={() =>
@@ -1894,10 +1898,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                   message
                                                 )
                                               }
-                                              className="inline-flex items-center gap-1.5 text-red-500 underline-offset-2 hover:text-red-400 hover:underline"
+                                              className="inline-flex items-center gap-1 text-red-500 underline-offset-2 hover:underline"
                                             >
-                                              <AlertTriangle className="size-3.5" />
-                                              Geef feedback
+                                              <AlertTriangle className="size-3" />
+                                              Feedback
                                             </button>
                                           </div>
                                         )}
@@ -1906,73 +1910,75 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                 );
                               })
                             )}
-                            <form
-                              onSubmit={handleCoachSubmit}
-                              className="absolute  bottom-3 w-232 pb-6"
-                            >
-                              <div className="flex flex-col relative rounded-3xl bg-white border gap-3 shadow-inner md:flex-row md:items-end">
-                                <textarea
-                                  value={coachInput}
-                                  onChange={(event) =>
-                                    setCoachInput(event.target.value)
-                                  }
-                                  placeholder="Schrijf een bericht..."
-                                  className="flex-1 resize-none rounded-3xl bg-white min-h-[150px] p-4 text-sm text-slate-900 focus:border-slate-400 focus:outline-none placeholder:text-slate-400"
-                                  rows={2}
-                                />
+                          </div>
+                          <form
+                            onSubmit={handleCoachSubmit}
+                            className="px-4 pb-4"
+                          >
+                            <div className="rounded-3xl relative bg-[#F1F1F1]">
+                              <textarea
+                                value={coachInput}
+                                onChange={(event) =>
+                                  setCoachInput(event.target.value)
+                                }
+                                placeholder="Schrijf een bericht..."
+                                className="h-24 w-full resize-none rounded-lg border border-transparent p-3 text-sm text-slate-900 focus:border-slate-300 focus:outline-none"
+                                rows={3}
+                              />
+                              <div className="mt-2 flex items-center justify-between text-xs">
                                 <button
                                   type="button"
                                   onClick={handleAttachmentButtonClick}
-                                  className="rounded-full absolute bottom-3 border right-13 bg-white p-2 text-[#242424]"
+                                  className="inline-flex items-center gap-1 absolute bottom-2 mr-2 bg-white aspect-square right-12 rounded-full border border-slate-200 px-3 text-slate-600"
                                 >
-                                  <Paperclip className="size-4" />
+                                  <Paperclip className="size-3.5" />
                                 </button>
                                 <button
                                   type="submit"
                                   disabled={!selectedClient || isCoachLoading}
-                                  className="rounded-full aspect-square bg-slate-900 p-2 absolute right-3 bottom-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                                  className="inline-flex items-center gap-2  aspect-square rounded-full bg-slate-900 px-3 absolute bottom-2 right-2 text-white disabled:opacity-50"
                                 >
                                   <ArrowUp className="size-4" />
                                 </button>
                               </div>
-                              <input
-                                ref={attachmentInputRef}
-                                type="file"
-                                className="sr-only"
-                                onChange={handleAttachmentChange}
-                              />
-                            </form>
-                          </div>
+                            </div>
+                            <input
+                              ref={attachmentInputRef}
+                              type="file"
+                              className="sr-only"
+                              onChange={handleAttachmentChange}
+                            />
+                          </form>
                         </>
                       ) : (
                         <>
                           <div
                             ref={overseerMessagesRef}
-                            className="flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-white/30 via-white/40 to-white/20 px-6 py-8"
+                            className="flex-1 space-y-3 overflow-y-auto px-5 py-5"
                           >
                             {overseerThread.length === 0 ? (
-                              <div className="rounded-2xl border border-white/40 bg-white/70 p-4 text-sm text-slate-600">
-                                Vraag de overzichtscoach om trends of
-                                risico&#39;s.
+                              <div className="rounded-xl border border-slate-200 bg-white p-4 text-slate-500">
+                                Vraag de overzichtscoach naar trends en
+                                signalen.
                               </div>
                             ) : (
                               overseerThread.map((message) => (
                                 <div
                                   key={message.id}
-                                  className={`rounded-2xl border px-4 py-3 text-sm ${
+                                  className={`rounded-xl border px-4 py-2 ${
                                     message.role === "assistant"
-                                      ? "border-purple-200/70 bg-white text-slate-900 shadow"
-                                      : "border-white/60 bg-white/80"
+                                      ? "border-purple-200 bg-white"
+                                      : "border-slate-200 bg-slate-50"
                                   }`}
                                 >
-                                  <p className="text-xs uppercase text-slate-500">
+                                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
                                     {message.role}
                                   </p>
-                                  <p className="mt-1 whitespace-pre-wrap">
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
                                     {message.content}
                                   </p>
                                   {isAdmin && message.role === "assistant" && (
-                                    <div className="mt-2 text-[11px] text-right">
+                                    <div className="mt-1 text-right text-[10px]">
                                       <button
                                         type="button"
                                         onClick={() =>
@@ -1981,9 +1987,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                             message
                                           )
                                         }
-                                        className="text-purple-600 underline-offset-2 hover:text-purple-500 hover:underline"
+                                        className="text-purple-600 underline-offset-2 hover:underline"
                                       >
-                                        Geef feedback
+                                        Feedback
                                       </button>
                                     </div>
                                   )}
@@ -1993,346 +1999,158 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           </div>
                           <form
                             onSubmit={handleOverseerSubmit}
-                            className="border-t border-white/40 bg-white/70 px-6 py-4"
+                            className="px-4 py-4"
                           >
-                            <textarea
-                              value={overseerInput}
-                              onChange={(event) =>
-                                setOverseerInput(event.target.value)
-                              }
-                              placeholder="Vraag naar trends, risico&#39;s..."
-                              disabled={isOverseerLoading}
-                              className="w-full resize-none rounded-2xl border border-white/60 bg-white/80 p-4 text-sm text-slate-900 shadow-inner focus:border-purple-400 focus:outline-none placeholder:text-slate-400"
-                              rows={2}
-                            />
-                            <button
-                              type="submit"
-                              disabled={
-                                !overseerInput.trim() || isOverseerLoading
-                              }
-                              className="mt-3 inline-flex items-center gap-2 rounded-full bg-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_35px_rgba(109,40,217,0.35)] transition hover:bg-purple-500 disabled:opacity-50"
-                            >
-                              Verstuur
-                            </button>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                              <textarea
+                                value={overseerInput}
+                                onChange={(event) =>
+                                  setOverseerInput(event.target.value)
+                                }
+                                placeholder="Vraag naar trends, risico's..."
+                                disabled={isOverseerLoading}
+                                className="h-24 w-full resize-none rounded-lg border border-transparent bg-slate-50 p-3 text-sm text-slate-900 focus:border-purple-200 focus:outline-none"
+                                rows={3}
+                              />
+                              <div className="mt-2 flex justify-end">
+                                <button
+                                  type="submit"
+                                  disabled={
+                                    !overseerInput.trim() || isOverseerLoading
+                                  }
+                                  className="inline-flex items-center gap-2 rounded-full bg-purple-600 px-4 py-1.5 text-white hover:bg-purple-500 disabled:opacity-50"
+                                >
+                                  Verstuur
+                                </button>
+                              </div>
+                            </div>
                           </form>
                         </>
                       )}
                     </div>
                   </section>
-                  <aside className="w-80 h-screen max-h-screen overflow-y-auto shrink-0  bg-white/40 backdrop-blur-2xl flex flex-col">
-                    <div className="p-5 backdrop-blur-2xl">
-                      <div className="flex items-center gap-3">
-                        <div className="size-9 rounded-full bg-[#242424] text-slate-600">
-                          {selectedClient?.avatarUrl ? (
-                            <>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={selectedClient.avatarUrl}
-                                alt={selectedClient.name}
-                                className="size-14 rounded-2xl object-cover"
-                              />
-                            </>
+                  <aside className="min-h-0 w-full shrink-0 text-sm text-slate-700 lg:w-84">
+                    <div className="space-y-4 overflow-y-auto">
+                      <div className="rounded-3xl bg-white p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
+                            {selectedClient?.avatarUrl ? (
+                              <>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={selectedClient.avatarUrl}
+                                  alt={selectedClient.name}
+                                  className="size-10 rounded-lg object-cover"
+                                />
+                              </>
+                            ) : selectedClientInitials ? (
+                              <span className="text-sm font-semibold">
+                                {selectedClientInitials}
+                              </span>
+                            ) : (
+                              <UserRound className="size-4" />
+                            )}
+                          </div>
+                          <div>
+                            {" "}
+                            <p className="text-sm font-semibold text-slate-900">
+                              {selectedClient?.name ?? "Geen cliënt"}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {selectedClient?.focusArea || "Geen focus"}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
+                          {selectedClient?.summary ||
+                            "Selecteer een cliënt om details te bekijken."}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {focusTags.length > 0 ? (
+                            focusTags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
+                              >
+                                {tag}
+                              </span>
+                            ))
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <UserRound className="size-4 text-white" />
-                            </div>
+                            <span className="text-[11px] text-slate-400">
+                              Geen trefwoorden
+                            </span>
                           )}
                         </div>
-                        <div>
-                          <h3 className="text-base font-semibold text-slate-900">
-                            {selectedClient?.name ?? "Geen cliënt"}
-                          </h3>
-                          <p className="text-xs text-slate-500">
-                            {selectedClient?.focusArea || "Geen focusgebied"}
-                          </p>
+                      </div>
+                      <div className="rounded-3xl bg-white p-4">
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-foreground font-semibold">
+                          <span>Doelen</span>
+                          <span className="text-slate-400">
+                            {selectedClient?.goals.length ?? 0}
+                          </span>
                         </div>
+                        <ul className="mt-3 space-y-2">
+                          {selectedClient?.goals.length ? (
+                            selectedClient.goals.map((goal, index) => (
+                              <li
+                                key={`${goal}-${index}`}
+                                className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[13px]"
+                              >
+                                {goal}
+                              </li>
+                            ))
+                          ) : (
+                            <p className="text-[13px] text-slate-500">
+                              Geen doelen ingesteld.
+                            </p>
+                          )}
+                        </ul>
                       </div>
-                      <p className="mt-4 text-sm text-slate-600">
-                        {selectedClient?.summary ||
-                          "Selecteer een cliënt om de details te zien."}
-                      </p>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {focusTags.length > 0 ? (
-                          focusTags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full border border-white/60 bg-white/80 px-3 py-1 text-xs font-medium text-slate-600"
-                            >
-                              {tag}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-slate-400">
-                            Geen trefwoorden beschikbaar.
+                      <div className="rounded-3xl bg-white p-4">
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-foreground font-semibold">
+                          <span>Documenten</span>
+                          <span className="text-slate-400">
+                            {documents.length}
                           </span>
-                        )}
-                      </div>
-                      {isAdmin && selectedClient && (
-                        <Dialog
-                          open={isClientDialogOpen}
-                          onOpenChange={(open) => {
-                            setClientDialogOpen(open);
-                            if (open) {
-                              setClientForm({
-                                name: selectedClient.name,
-                                focusArea: selectedClient.focusArea,
-                                summary: selectedClient.summary,
-                                goals: selectedClient.goals.join(", "),
-                                avatarUrl: selectedClient.avatarUrl ?? "",
-                              });
-                              setEditingClientId(selectedClient.id);
-                            } else {
-                              setEditingClientId(null);
-                              setAvatarFile(null);
-                            }
-                          }}
-                        >
-                          <DialogTrigger asChild>
-                            <button className="inline-flex absolute top-3 right-3 items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                              <Edit2 className="size-4" />
-                            </button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-xl space-y-4">
-                            <DialogHeader>
-                              <DialogTitle>
-                                Gegevens van {selectedClient.name}
-                              </DialogTitle>
-                              <DialogDescription>
-                                Pas de basisinformatie en doelen van de cliënt
-                                aan.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <form
-                              className="space-y-4"
-                              onSubmit={handleClientSave}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="size-16 rounded-full border border-slate-200 bg-slate-50 text-slate-600 flex items-center justify-center overflow-hidden">
-                                  {avatarFile ? (
-                                    <>
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={URL.createObjectURL(avatarFile)}
-                                        alt="Voorbeeld avatar"
-                                        className="size-16 object-cover"
-                                      />
-                                    </>
-                                  ) : selectedClient.avatarUrl ? (
-                                    <>
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={selectedClient.avatarUrl}
-                                        alt={selectedClient.name}
-                                        className="size-16 object-cover"
-                                      />
-                                    </>
-                                  ) : selectedClientInitials ? (
-                                    <span className="text-base font-semibold">
-                                      {selectedClientInitials}
-                                    </span>
-                                  ) : (
-                                    <UserRound className="size-6 text-slate-400" />
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-slate-700">
-                                    Profielfoto
-                                  </p>
-                                  <div className="mt-1 flex items-center gap-2">
-                                    <input
-                                      id={editClientAvatarInputId}
-                                      type="file"
-                                      accept="image/*"
-                                      className="sr-only"
-                                      onChange={(event) =>
-                                        setAvatarFile(
-                                          event.target.files?.[0] ?? null
-                                        )
-                                      }
-                                    />
-                                    <label
-                                      htmlFor={editClientAvatarInputId}
-                                      className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
-                                    >
-                                      Kies bestand
-                                    </label>
-                                    <span className="text-xs text-slate-500">
-                                      {avatarFile
-                                        ? avatarFile.name
-                                        : selectedClient.avatarUrl
-                                        ? "Huidige foto ingesteld"
-                                        : "Geen bestand geselecteerd"}
-                                    </span>
-                                  </div>
-                                  <p className="mt-1 text-[11px] text-slate-500">
-                                    PNG of JPG, maximaal 5 MB.
-                                  </p>
-                                </div>
-                              </div>
-                              <label className="flex flex-col gap-1 text-sm">
-                                Naam
-                                <input
-                                  type="text"
-                                  value={clientForm.name}
-                                  onChange={(event) =>
-                                    setClientForm((form) => ({
-                                      ...form,
-                                      name: event.target.value,
-                                    }))
-                                  }
-                                  className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                  required
-                                />
-                              </label>
-                              <label className="flex flex-col gap-1 text-sm">
-                                Focusgebied
-                                <input
-                                  type="text"
-                                  value={clientForm.focusArea}
-                                  onChange={(event) =>
-                                    setClientForm((form) => ({
-                                      ...form,
-                                      focusArea: event.target.value,
-                                    }))
-                                  }
-                                  className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                />
-                              </label>
-                              <label className="flex flex-col gap-1 text-sm">
-                                Samenvatting
-                                <textarea
-                                  value={clientForm.summary}
-                                  onChange={(event) =>
-                                    setClientForm((form) => ({
-                                      ...form,
-                                      summary: event.target.value,
-                                    }))
-                                  }
-                                  rows={4}
-                                  className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                />
-                              </label>
-                              <label className="flex flex-col gap-1 text-sm">
-                                Doelen (gescheiden door komma)
-                                <textarea
-                                  value={clientForm.goals}
-                                  onChange={(event) =>
-                                    setClientForm((form) => ({
-                                      ...form,
-                                      goals: event.target.value,
-                                    }))
-                                  }
-                                  rows={3}
-                                  className="rounded-lg border border-slate-200 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                  placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
-                                />
-                              </label>
-                              <div className="flex justify-end gap-2 text-sm">
-                                <button
-                                  type="button"
-                                  onClick={() => setClientDialogOpen(false)}
-                                  className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
-                                >
-                                  Annuleren
-                                </button>
-                                <button
-                                  type="submit"
-                                  disabled={isClientSaving}
-                                  className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
-                                >
-                                  {isClientSaving ? "Opslaan..." : "Opslaan"}
-                                </button>
-                              </div>
-                            </form>
-                          </DialogContent>
-                        </Dialog>
-                      )}
-                    </div>
-                    <div className="p-5 backdrop-blur-2xl">
-                      <div className="mb-2 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          Doelen
-                        </h3>
-                        <Target className="size-4.5 text-[#B4D1EF]" />
-                      </div>
-                      <ul className="space-y-3">
-                        {selectedClient?.goals.length ? (
-                          selectedClient.goals.map((goal, index) => (
-                            <li
-                              key={`${goal}-${index}`}
-                              className="flex items-start gap-3 text-sm text-slate-700"
-                            >
-                              <span className="text-xs font-semibold text-slate-400">
-                                {index + 1}.
-                              </span>
-                              <span className="leading-tight">{goal}</span>
-                            </li>
-                          ))
-                        ) : (
-                          <p className="text-sm text-slate-500">
-                            Geen doelen ingesteld.
+                        </div>
+                        {documents.length === 0 ? (
+                          <p className="mt-2 text-[13px] text-slate-500">
+                            Nog geen bestanden.
                           </p>
-                        )}
-                      </ul>
-                    </div>
-                    <div className="p-5 backdrop-blur-2xl">
-                      <div className="mb-1.5 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          Documenten
-                        </h3>
-                        {isDocUploading && (
-                          <span className="text-xs text-slate-500">
-                            Uploaden…
-                          </span>
-                        )}
-                      </div>
-                      {documents.length === 0 ? (
-                        <p className="text-sm text-slate-500">
-                          Nog geen bestanden gekoppeld.
-                        </p>
-                      ) : (
-                        <div className="space-y-3">
-                          {documents.map((doc) => (
-                            <div
-                              key={doc.id}
-                              className="rounded-lg border border-white/50 bg-white/80 py-2 px-3"
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-xs font-semibold text-slate-900">
-                                    {doc.originalName}
-                                  </p>
-                                  <p className="text-[11px] mt-0.5 text-slate-500">
-                                    {(doc.size / 1024).toFixed(1)} KB
-                                  </p>
-                                </div>
-                                <span className="whitespace-nowrap rounded-full bg-slate-900/5 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            {documents.map((doc) => (
+                              <div
+                                key={doc.id}
+                                className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                              >
+                                <p className="truncate text-[13px] font-medium text-slate-900">
+                                  {doc.originalName}
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  {(doc.size / 1024).toFixed(1)} KB •{" "}
                                   {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
-                                </span>
+                                </p>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-5 backdrop-blur-2xl">
-                      <div className="mb-4 flex items-center gap-2">
-                        <CheckCircle2 className="size-4 text-slate-400" />
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          Sterktes &amp; Aandachtspunten
-                        </h3>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <ul className="space-y-3">
-                        {strengthsAndWatchouts.map((item, idx) => (
-                          <li
-                            key={`${item}-${idx}`}
-                            className="flex items-start gap-3 text-sm text-slate-700"
-                          >
-                            <div className="mt-1 min-w-1.5 mt-1.5 h-1.5 w-1.5 rounded-full bg-slate-400" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="rounded-3xl bg-white p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-foreground font-semibold">
+                          Sterktes & aandacht
+                        </p>
+                        <ul className="mt-3 space-y-2">
+                          {strengthsAndWatchouts.map((item, idx) => (
+                            <li
+                              key={`${item}-${idx}`}
+                              className="text-[13px] text-slate-700"
+                            >
+                              • {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
                   </aside>
                 </div>
