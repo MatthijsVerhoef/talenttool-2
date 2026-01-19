@@ -1120,8 +1120,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     <>
       <img
         alt="background"
-        src="/talenttool-bg-large.png"
-        className="absolute top-0 left-0 w-screen h-screen -z-1"
+        src="/talenttool-bg.png"
+        className="absolute top-0 left-0 opacity-100 w-screen h-screen -z-1"
       />
       {/* Used a very flat light grey background for the app container */}
       <div className="relative flex  h-screen max-h-screen w-full overflow-hidden text-slate-900">
@@ -1922,7 +1922,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     rounded-[36px]
     overflow-hidden
 
-    bg-white/18
+    bg-white/25
     backdrop-blur-2xl backdrop-saturate-120
 
     p-4
