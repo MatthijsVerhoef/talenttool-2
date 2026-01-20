@@ -26,10 +26,12 @@ import {
   AlertTriangle,
   Edit2,
   ArrowUp,
+  ShieldCheck,
 } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 
 import { authClient } from "@/lib/auth-client";
+import { AdminUserManagement } from "@/components/admin/user-management";
 import {
   Dialog,
   DialogContent,
@@ -179,7 +181,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [refineTarget, setRefineTarget] = useState<AgentKindType | null>(null);
   const [isRefiningPrompt, setRefiningPrompt] = useState(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<
-    "dashboard" | "prompt-center"
+    "dashboard" | "prompt-center" | "user-management"
   >("dashboard");
   const [error, setError] = useState<string | null>(null);
   const [isSigningOut, setSigningOut] = useState(false);
@@ -1386,6 +1388,23 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   <li>
                     <button
                       type="button"
+                      onClick={() => setActiveSidebarTab("user-management")}
+                      className={[
+                        "w-full flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium transition",
+                        activeSidebarTab === "user-management"
+                          ? "bg-slate-900/10 text-slate-900"
+                          : "text-slate-700 hover:bg-slate-100/70",
+                      ].join(" ")}
+                    >
+                      <ShieldCheck className="size-4 text-emerald-500" />
+                      Gebruikersbeheer
+                    </button>
+                  </li>
+                )}
+                {isAdmin && (
+                  <li>
+                    <button
+                      type="button"
                       onClick={() => setActiveSidebarTab("prompt-center")}
                       className={[
                         "w-full flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium transition",
@@ -1913,6 +1932,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 </div>
               </div>
             </div>
+          ) : activeSidebarTab === "user-management" ? (
+            <AdminUserManagement
+              onBack={() => setActiveSidebarTab("dashboard")}
+            />
           ) : (
             <>
               <div className="relative flex-1 min-h-0 overflow-hidden p-2">

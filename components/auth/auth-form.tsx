@@ -1,24 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, UserRound } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 
-export function AuthForm() {
+interface AuthFormProps {
+  invite?: {
+    token: string;
+    email: string;
+    expiresAt: string;
+  };
+}
+
+export function AuthForm({ invite }: AuthFormProps = {}) {
   const router = useRouter();
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [mode, setMode] = useState<"sign-in" | "sign-up">(
+    invite ? "sign-up" : "sign-in"
+  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
+  const isInviteFlow = Boolean(invite);
   const isSignUp = mode === "sign-up";
+  const inviteExpiresAt = useMemo(() => {
+    if (!invite?.expiresAt) {
+      return null;
+    }
+    const parsed = new Date(invite.expiresAt);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed.toLocaleString();
+  }, [invite?.expiresAt]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const email = formData.get("email")?.toString() ?? "";
+    const email = invite?.email ?? formData.get("email")?.toString() ?? "";
     const password = formData.get("password")?.toString() ?? "";
     const name = formData.get("name")?.toString() ?? "";
 
@@ -33,29 +54,54 @@ export function AuthForm() {
 
     try {
       if (isSignUp) {
-        await authClient.signUp.email({
-          email,
-          password,
-          name,
-        });
-        setSuccess("Account aangemaakt. Je wordt doorgestuurd...");
+        if (invite) {
+          const response = await fetch(
+            `/api/invitations/${invite.token}/accept`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                name,
+                password,
+              }),
+            }
+          );
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(
+              data.error ?? "Uitnodiging accepteren is mislukt."
+            );
+          }
+          setSuccess("Welkom! Je account is aangemaakt.");
+        } else {
+          await authClient.signUp.email({
+            email,
+            password,
+            name,
+          });
+          setSuccess("Account aangemaakt. Je wordt doorgestuurd...");
+        }
       } else {
         await authClient.signIn.email({
           email,
           password,
         });
       }
-      router.push("/");
-      router.refresh();
     } catch (submitError) {
       const message =
         submitError instanceof Error
           ? submitError.message
           : "Er is iets misgegaan.";
       setError(message);
-    } finally {
       setSubmitting(false);
+      return;
     }
+
+    router.push("/");
+    router.refresh();
+    setSubmitting(false);
   }
 
   return (
@@ -69,10 +115,17 @@ export function AuthForm() {
         <div className="text-center w-full">
           <img alt="logo" className="mx-auto mb-4" src="/talenttool-logo.svg" />
           <p className="mt-2 text-sm text-slate-500">
-            {isSignUp
-              ? "Meld je aan om toegang te krijgen tot je coachomgeving."
-              : "Start met het begeleiden van cliënten via het coachportaal."}
+            {isInviteFlow
+              ? `Je bent uitgenodigd om als coach te starten via ${invite?.email}.`
+              : isSignUp
+                ? "Meld je aan om toegang te krijgen tot je coachomgeving."
+                : "Start met het begeleiden van cliënten via het coachportaal."}
           </p>
+          {isInviteFlow && inviteExpiresAt && (
+            <p className="text-xs text-slate-500">
+              Uitnodiging verloopt op {inviteExpiresAt}
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 w-full">
@@ -87,6 +140,7 @@ export function AuthForm() {
                   autoComplete="name"
                   placeholder="Voor- en achternaam"
                   className="w-full h-8 border-none bg-transparent text-sm text-slate-900 placeholder:text-gray-400 focus:outline-none"
+                  required
                 />
               </div>
             </label>
@@ -101,6 +155,8 @@ export function AuthForm() {
                 name="email"
                 autoComplete="email"
                 placeholder="jij@example.com"
+                defaultValue={invite?.email}
+                readOnly={isInviteFlow}
                 className="w-full h-8 border-none bg-transparent text-sm text-slate-900 placeholder:text-gray-400 focus:outline-none"
                 required
               />
@@ -143,25 +199,34 @@ export function AuthForm() {
             {isSubmitting
               ? "Even geduld..."
               : isSignUp
-              ? "Account aanmaken"
-              : "Inloggen"}
+                ? "Account aanmaken"
+                : "Inloggen"}
           </button>
         </form>
 
-        <p className="text-center text-sm text-slate-500">
-          {isSignUp ? "Al een account?" : "Nog geen account?"}{" "}
-          <button
-            type="button"
-            onClick={() => {
-              setMode(isSignUp ? "sign-in" : "sign-up");
-              setError(null);
-              setSuccess(null);
-            }}
-            className="font-semibold text-slate-900 underline"
-          >
-            {isSignUp ? "Log in" : "Maak er een aan"}
-          </button>
-        </p>
+        {isInviteFlow ? (
+          <p className="text-center text-sm text-slate-500">
+            Heb je al een account?{" "}
+            <a href="/login" className="font-semibold text-slate-900 underline">
+              Log hier in
+            </a>
+          </p>
+        ) : (
+          <p className="text-center text-sm text-slate-500">
+            {isSignUp ? "Al een account?" : "Nog geen account?"}{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setMode(isSignUp ? "sign-in" : "sign-up");
+                setError(null);
+                setSuccess(null);
+              }}
+              className="font-semibold text-slate-900 underline"
+            >
+              {isSignUp ? "Log in" : "Maak er een aan"}
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

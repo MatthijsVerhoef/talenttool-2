@@ -164,6 +164,8 @@ model User {
   sessions Session[]
   accounts Account[]
   feedback AgentFeedback[]
+  createdInvites  UserInvite[] @relation("UserInviteCreatedBy")
+  acceptedInvites UserInvite[] @relation("UserInviteAcceptedBy")
 }
 
 model Session {
@@ -179,6 +181,24 @@ model Session {
   userId String
 
   @@index([userId])
+}
+
+model UserInvite {
+  id            String   @id @default(cuid())
+  email         String
+  token         String   @unique
+  role          UserRole @default(COACH)
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  createdById   String?
+  acceptedById  String?
+
+  createdBy User? @relation("UserInviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  acceptedBy User? @relation("UserInviteAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([token])
 }
 
 model Account {
