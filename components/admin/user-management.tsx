@@ -309,7 +309,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                   invites.map((invite) => (
                     <li
                       key={invite.id}
-                      className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm"
+                      className="rounded-xl border border-slate-100 bg-[#F1f1f1] p-3 text-sm"
                     >
                       <p className="font-medium text-slate-900">
                         {invite.email}

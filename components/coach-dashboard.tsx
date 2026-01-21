@@ -2479,17 +2479,17 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             />
           ) : (
             <>
-              <div className="relative flex-1 min-h-0 overflow-hidden p-1 md:p-2">
+              <div className="relative flex-1 min-h-0 overflow-hidden p-0 md:p-2">
                 <div
                   className="
                     relative flex h-full min-h-0 gap-4
-                    rounded-xl
+                    rounded-0
                     md:rounded-[36px]
                     overflow-hidden
                     bg-white/25
                     backdrop-blur-2xl backdrop-saturate-120
                     p-0 md:p-4
-                    pt-0
+                    pt-0!
                     text-sm text-slate-800
                   "
                 >
@@ -2557,7 +2557,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                         <>
                           <div
                             ref={coachMessagesRef}
-                            className="flex-1 space-y-3 flex flex-col overflow-y-auto lg:px-5 pb-5 lg:py-5"
+                            className="flex-1 space-y-3 flex flex-col overflow-y-auto px-3 lg:px-5 pb-5 lg:py-5"
                           >
                             {messages.length === 0 ? (
                               <div className="flex h-fit w-fit py-2 pl-5 pr-7 mt-4 bg-white items-center justify-center gap-2 rounded-3xl m-auto">
@@ -2613,7 +2613,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           </div>
                           <form
                             onSubmit={handleCoachSubmit}
-                            className="md:px-4 md:pb-4"
+                            className="px-3 md:px-4 pb-4"
                           >
                             <div className="rounded-3xl relative bg-[#FFFF] border">
                               <textarea
@@ -2729,7 +2729,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                       )}
                     </div>
                   </section>
-                  <aside className="hidden lg:flex min-h-0 w-84 shrink-0 flex-col text-sm text-slate-700">
+                  <aside className="hidden lg:flex min-h-0 w-84 shrink-0 pt-4 flex-col text-sm text-slate-700">
                     {renderClientDetailsContent("desktop")}
                   </aside>
                 </div>
