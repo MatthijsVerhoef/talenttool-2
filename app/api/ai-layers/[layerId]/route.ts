@@ -150,7 +150,7 @@ export async function DELETE(request: Request, { params }: Params) {
   const { layerId } = await params;
   try {
     await deleteResponseLayer(layerId);
-    return NextResponse.json({}, { status: 204 });
+    return new Response(null, { status: 204 });
   } catch (error) {
     console.error("Layer delete failed", error);
     if (

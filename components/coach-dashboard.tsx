@@ -26,6 +26,7 @@ import {
   ArrowLeft,
   ShieldCheck,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 
@@ -109,6 +110,13 @@ function cleanMessageContent(content: string) {
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/^\s*[-*]\s*/gm, "• ")
     .trim();
+}
+
+function isPendingAgentMessage(message: AgentMessage) {
+  if (!message.meta || typeof message.meta !== "object") {
+    return false;
+  }
+  return Boolean((message.meta as { pending?: boolean }).pending);
 }
 
 const toolLinks: Array<{ label: string; icon: LucideIcon }> = [
@@ -598,9 +606,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       setAiLayers(Array.isArray(data.layers) ? data.layers : []);
     } catch (fetchError) {
       console.error(fetchError);
-      setError(
-        (fetchError as Error).message ?? "AI-lagen laden is mislukt."
-      );
+      setError((fetchError as Error).message ?? "AI-lagen laden is mislukt.");
     } finally {
       setLayerLoading(false);
     }
@@ -635,13 +641,47 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     event.preventDefault();
     if (!selectedClientId || !coachInput.trim()) return;
 
+    const trimmedMessage = coachInput.trim();
+    const userTempId = `temp-user-${Date.now()}`;
+    const assistantTempId = `${userTempId}-assistant`;
+    const timestamp = new Date().toISOString();
+
+    setCoachInput("");
     setCoachLoading(true);
     setError(null);
+
+    setClientHistories((prev) => {
+      const prevHistory = prev[selectedClientId] ?? [];
+      return {
+        ...prev,
+        [selectedClientId]: [
+          ...prevHistory,
+          {
+            id: userTempId,
+            role: "user",
+            source: "HUMAN",
+            content: trimmedMessage,
+            createdAt: timestamp,
+            meta: null,
+          },
+          {
+            id: assistantTempId,
+            role: "assistant",
+            source: "AI",
+            content: "De coach formuleert een antwoord...",
+            createdAt: timestamp,
+            meta: { pending: true },
+          },
+        ],
+      };
+    });
+    scrollToBottom(coachMessagesRef);
+
     try {
       const response = await fetch(`/api/coach/${selectedClientId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: coachInput }),
+        body: JSON.stringify({ message: trimmedMessage }),
       });
 
       if (!response.ok) throw new Error("Coach kon niet reageren.");
@@ -651,10 +691,20 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         ...prev,
         [selectedClientId]: data.history ?? [],
       }));
-      setCoachInput("");
       scrollToBottom(coachMessagesRef);
     } catch (sendError) {
       console.error(sendError);
+      setClientHistories((prev) => {
+        const prevHistory = prev[selectedClientId] ?? [];
+        return {
+          ...prev,
+          [selectedClientId]: prevHistory.filter(
+            (message) =>
+              message.id !== userTempId && message.id !== assistantTempId
+          ),
+        };
+      });
+      setCoachInput(trimmedMessage);
       setError(
         (sendError as Error).message ?? "Contact met de coach is mislukt."
       );
@@ -2618,8 +2668,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                               <span>AI-lagen</span>
                             </p>
                             <p className="text-xs text-slate-500">
-                              Laat antwoorden extra controles doorlopen voordat ze
-                              naar de coach gaan.
+                              Laat antwoorden extra controles doorlopen voordat
+                              ze naar de coach gaan.
                             </p>
                           </div>
                           <button
@@ -2688,7 +2738,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => handleLayerDelete(layer.id)}
+                                      onClick={() =>
+                                        handleLayerDelete(layer.id)
+                                      }
                                       disabled={
                                         layerActionId === layer.id &&
                                         layerActionType === "delete"
@@ -2742,8 +2794,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                     layerActionType === "toggle"
                                       ? "Bijwerken..."
                                       : layer.isEnabled
-                                        ? "Uitschakelen"
-                                        : "Inschakelen"}
+                                      ? "Uitschakelen"
+                                      : "Inschakelen"}
                                   </button>
                                 </div>
                               </li>
@@ -2935,6 +2987,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                 const isAi =
                                   message.role === "assistant" ||
                                   message.role === "system";
+                                const isPendingResponse =
+                                  isAi && isPendingAgentMessage(message);
                                 return (
                                   <div
                                     key={message.id}
@@ -2952,6 +3006,12 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                       <p className="whitespace-pre-wrap">
                                         {cleanMessageContent(message.content)}
                                       </p>
+                                      {isPendingResponse && (
+                                        <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+                                          <Loader2 className="size-3 animate-spin" />
+                                          Antwoord wordt gevormd...
+                                        </div>
+                                      )}
                                       {isAdmin &&
                                         message.role === "assistant" &&
                                         isAi && (
@@ -3163,7 +3223,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   type="text"
                   value={layerForm.name}
                   onChange={(event) =>
-                    setLayerForm((prev) => ({ ...prev, name: event.target.value }))
+                    setLayerForm((prev) => ({
+                      ...prev,
+                      name: event.target.value,
+                    }))
                   }
                   className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
                   required
@@ -3295,8 +3358,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 {isLayerSaving
                   ? "Opslaan..."
                   : editingLayer
-                    ? "Wijzigingen opslaan"
-                    : "Laag toevoegen"}
+                  ? "Wijzigingen opslaan"
+                  : "Laag toevoegen"}
               </button>
             </div>
           </form>
