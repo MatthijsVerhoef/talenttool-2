@@ -112,6 +112,25 @@ function cleanMessageContent(content: string) {
     .trim();
 }
 
+function renderUserAvatarElement(name?: string | null, image?: string | null) {
+  if (image) {
+    return (
+      <Image
+        src={image}
+        alt={name ?? "Coach"}
+        width={36}
+        height={36}
+        className="h-9 w-9 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white">
+      <span className="text-xs font-semibold">{getInitials(name) || "J"}</span>
+    </div>
+  );
+}
+
 function isPendingAgentMessage(message: AgentMessage) {
   if (!message.meta || typeof message.meta !== "object") {
     return false;
@@ -2989,6 +3008,19 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                   message.role === "system";
                                 const isPendingResponse =
                                   isAi && isPendingAgentMessage(message);
+                                const senderName = isAi
+                                  ? "AI-coach"
+                                  : displayUser.name ?? "Jij";
+                                const avatarNode = isAi ? (
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#222222] text-white">
+                                    <Sparkles className="size-4" />
+                                  </div>
+                                ) : (
+                                  renderUserAvatarElement(
+                                    displayUser.name,
+                                    displayUser.image
+                                  )
+                                );
                                 return (
                                   <div
                                     key={message.id}
@@ -2997,40 +3029,58 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                     }`}
                                   >
                                     <div
-                                      className={`max-w-[86%] lg:max-w-[75%] rounded-3xl leading-relaxed ${
-                                        isAi
-                                          ? " bg-white rounded-tl-md p-5 text-slate-900"
-                                          : "bg-[#222222] rounded-tr-md p-3 text-white"
+                                      className={`flex max-w-[86%] lg:max-w-[75%] items-start gap-3 ${
+                                        isAi ? "" : "flex-row-reverse"
                                       }`}
                                     >
-                                      <p className="whitespace-pre-wrap">
-                                        {cleanMessageContent(message.content)}
-                                      </p>
-                                      {isPendingResponse && (
-                                        <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
-                                          <Loader2 className="size-3 animate-spin" />
-                                          Antwoord wordt gevormd...
-                                        </div>
-                                      )}
-                                      {isAdmin &&
-                                        message.role === "assistant" &&
-                                        isAi && (
-                                          <div className="mt-2 text-[11px]">
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                openFeedbackDialog(
-                                                  "COACH",
-                                                  message
-                                                )
-                                              }
-                                              className="inline-flex items-center gap-1 text-red-500 underline-offset-2 hover:underline"
-                                            >
-                                              <AlertTriangle className="size-3" />
-                                              Geef feedback op AI
-                                            </button>
+                                      <div className="mt-1 shrink-0">
+                                        {avatarNode}
+                                      </div>
+                                      <div
+                                        className={`flex-1 rounded-3xl leading-relaxed ${
+                                          isAi
+                                            ? "bg-white rounded-tl-md p-5 text-slate-900"
+                                            : "bg-[#222222] rounded-tr-md p-4 text-white"
+                                        }`}
+                                      >
+                                        <p
+                                          className={`text-[11px] font-semibold uppercase tracking-wide ${
+                                            isAi
+                                              ? "text-[#222222]"
+                                              : "text-slate-200"
+                                          }`}
+                                        >
+                                          {senderName}
+                                        </p>
+                                        <p className="mt-1 whitespace-pre-wrap">
+                                          {cleanMessageContent(message.content)}
+                                        </p>
+                                        {isPendingResponse && (
+                                          <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+                                            <Loader2 className="size-3 animate-spin" />
+                                            Antwoord wordt gevormd...
                                           </div>
                                         )}
+                                        {isAdmin &&
+                                          message.role === "assistant" &&
+                                          isAi && (
+                                            <div className="mt-2 text-[11px]">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  openFeedbackDialog(
+                                                    "COACH",
+                                                    message
+                                                  )
+                                                }
+                                                className="inline-flex items-center gap-1 text-red-500 underline-offset-2 hover:underline"
+                                              >
+                                                <AlertTriangle className="size-3" />
+                                                Geef feedback op AI
+                                              </button>
+                                            </div>
+                                          )}
+                                      </div>
                                     </div>
                                   </div>
                                 );
@@ -3088,39 +3138,79 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                 signalen.
                               </div>
                             ) : (
-                              overseerThread.map((message) => (
-                                <div
-                                  key={message.id}
-                                  className={`rounded-xl border px-4 py-2 ${
-                                    message.role === "assistant"
-                                      ? "border-purple-200 bg-white"
-                                      : "border-slate-200 bg-slate-50"
-                                  }`}
-                                >
-                                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                                    {message.role}
-                                  </p>
-                                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
-                                    {cleanMessageContent(message.content)}
-                                  </p>
-                                  {isAdmin && message.role === "assistant" && (
-                                    <div className="mt-1 text-right text-[10px]">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          openFeedbackDialog(
-                                            "OVERSEER",
-                                            message
-                                          )
-                                        }
-                                        className="text-purple-600 underline-offset-2 hover:underline"
+                              overseerThread.map((message) => {
+                                const isAssistant =
+                                  message.role === "assistant";
+                                const senderName = isAssistant
+                                  ? "Overzichtscoach"
+                                  : displayUser.name ?? "Jij";
+                                const avatarNode = isAssistant ? (
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-50 text-purple-600">
+                                    <Sparkles className="size-4" />
+                                  </div>
+                                ) : (
+                                  renderUserAvatarElement(
+                                    displayUser.name,
+                                    displayUser.image
+                                  )
+                                );
+                                return (
+                                  <div
+                                    key={message.id}
+                                    className={`flex ${
+                                      isAssistant
+                                        ? "justify-start"
+                                        : "justify-end"
+                                    }`}
+                                  >
+                                    <div
+                                      className={`flex max-w-[90%] items-start gap-3 ${
+                                        isAssistant ? "" : "flex-row-reverse"
+                                      }`}
+                                    >
+                                      <div className="mt-1 shrink-0">
+                                        {avatarNode}
+                                      </div>
+                                      <div
+                                        className={`flex-1 rounded-xl border px-4 py-3 ${
+                                          isAssistant
+                                            ? "border-purple-200 bg-white"
+                                            : "border-slate-200 bg-slate-50"
+                                        }`}
                                       >
-                                        Feedback
-                                      </button>
+                                        <p
+                                          className={`text-[10px] font-semibold uppercase tracking-wide ${
+                                            isAssistant
+                                              ? "text-purple-600"
+                                              : "text-slate-500"
+                                          }`}
+                                        >
+                                          {senderName}
+                                        </p>
+                                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
+                                          {cleanMessageContent(message.content)}
+                                        </p>
+                                        {isAdmin && isAssistant && (
+                                          <div className="mt-1 text-right text-[10px]">
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                openFeedbackDialog(
+                                                  "OVERSEER",
+                                                  message
+                                                )
+                                              }
+                                              className="text-purple-600 underline-offset-2 hover:underline"
+                                            >
+                                              Feedback
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                  )}
-                                </div>
-                              ))
+                                  </div>
+                                );
+                              })
                             )}
                           </div>
                           <form
