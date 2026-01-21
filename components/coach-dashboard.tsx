@@ -25,6 +25,7 @@ import {
   ArrowUp,
   ArrowLeft,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 
@@ -76,6 +77,21 @@ interface AgentFeedbackItem {
     id: string;
     name?: string | null;
   } | null;
+}
+
+type AiLayerTarget = "ALL" | "COACH" | "OVERSEER";
+
+interface AiResponseLayerRow {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  target: AiLayerTarget;
+  model: string;
+  temperature: number;
+  position: number;
+  isEnabled: boolean;
+  createdAt: string;
 }
 
 function getInitials(name?: string | null) {
@@ -206,6 +222,26 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   );
   const [hasRequestedCoachOptions, setHasRequestedCoachOptions] =
     useState(false);
+  const [aiLayers, setAiLayers] = useState<AiResponseLayerRow[]>([]);
+  const [isLayerLoading, setLayerLoading] = useState(false);
+  const [isLayerSaving, setLayerSaving] = useState(false);
+  const [layerDialogOpen, setLayerDialogOpen] = useState(false);
+  const [editingLayer, setEditingLayer] = useState<AiResponseLayerRow | null>(
+    null
+  );
+  const [layerForm, setLayerForm] = useState({
+    name: "",
+    description: "",
+    instructions: "",
+    target: "COACH" as AiLayerTarget,
+    model: "",
+    temperature: 0.2,
+    isEnabled: true,
+  });
+  const [layerActionId, setLayerActionId] = useState<string | null>(null);
+  const [layerActionType, setLayerActionType] = useState<
+    "toggle" | "delete" | null
+  >(null);
   const editClientAvatarInputId = useId();
   const newClientAvatarInputId = useId();
   const userAvatarInputId = useId();
@@ -228,6 +264,28 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       },
     ],
     []
+  );
+  const getDefaultLayerForm = useCallback(
+    () => ({
+      name: "",
+      description: "",
+      instructions: "",
+      target: "COACH" as AiLayerTarget,
+      model: coachModel || overseerModel || availableModels[0]?.value || "",
+      temperature: 0.2,
+      isEnabled: true,
+    }),
+    [availableModels, coachModel, overseerModel]
+  );
+  const layerTargetLabels: Record<AiLayerTarget, string> = {
+    COACH: "Coachkanaal",
+    OVERSEER: "Overzichtscoach",
+    ALL: "Beide agenten",
+  };
+  const getModelLabel = useCallback(
+    (value: string) =>
+      availableModels.find((option) => option.value === value)?.label ?? value,
+    [availableModels]
   );
 
   useEffect(() => {
@@ -523,6 +581,31 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
   }, [isAdmin]);
 
+  const fetchAiLayers = useCallback(async () => {
+    if (!isAdmin) {
+      setAiLayers([]);
+      setLayerLoading(false);
+      return;
+    }
+
+    setLayerLoading(true);
+    try {
+      const response = await fetch("/api/ai-layers");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Kan AI-lagen niet laden.");
+      }
+      setAiLayers(Array.isArray(data.layers) ? data.layers : []);
+    } catch (fetchError) {
+      console.error(fetchError);
+      setError(
+        (fetchError as Error).message ?? "AI-lagen laden is mislukt."
+      );
+    } finally {
+      setLayerLoading(false);
+    }
+  }, [isAdmin]);
+
   useEffect(() => {
     if (isAdmin) {
       void fetchOverseerThread();
@@ -533,9 +616,11 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       setOverseerPromptUpdatedAt(null);
     }
     void fetchCoachPrompt();
+    void fetchAiLayers();
     void fetchModelSettings();
   }, [
     fetchCoachPrompt,
+    fetchAiLayers,
     fetchModelSettings,
     fetchOverseerPrompt,
     fetchOverseerThread,
@@ -697,6 +782,143 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       );
     } finally {
       setModelSaving(false);
+    }
+  }
+
+  function openLayerDialogFor(layer?: AiResponseLayerRow | null) {
+    if (layer) {
+      setLayerForm({
+        name: layer.name,
+        description: layer.description,
+        instructions: layer.instructions,
+        target: layer.target,
+        model: layer.model,
+        temperature: layer.temperature ?? 0.2,
+        isEnabled: layer.isEnabled,
+      });
+      setEditingLayer(layer);
+    } else {
+      setLayerForm(getDefaultLayerForm());
+      setEditingLayer(null);
+    }
+    setLayerDialogOpen(true);
+  }
+
+  function closeLayerDialog() {
+    setLayerDialogOpen(false);
+    setEditingLayer(null);
+    setLayerForm(getDefaultLayerForm());
+  }
+
+  async function handleLayerSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      !layerForm.name.trim() ||
+      !layerForm.description.trim() ||
+      !layerForm.instructions.trim() ||
+      !layerForm.model
+    ) {
+      setError("Vul alle verplichte velden voor de AI-laag in.");
+      return;
+    }
+
+    setLayerSaving(true);
+    setError(null);
+    try {
+      const payload = {
+        name: layerForm.name.trim(),
+        description: layerForm.description.trim(),
+        instructions: layerForm.instructions.trim(),
+        target: layerForm.target,
+        model: layerForm.model,
+        temperature: Number(layerForm.temperature),
+        isEnabled: layerForm.isEnabled,
+      };
+      const response = await fetch(
+        editingLayer ? `/api/ai-layers/${editingLayer.id}` : "/api/ai-layers",
+        {
+          method: editingLayer ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Opslaan van AI-laag is mislukt.");
+      }
+
+      const updated = data.layer as AiResponseLayerRow;
+      setAiLayers((prev) => {
+        const next = editingLayer
+          ? prev.map((item) => (item.id === updated.id ? updated : item))
+          : [...prev, updated];
+        return next.sort((a, b) =>
+          a.position === b.position
+            ? a.createdAt.localeCompare(b.createdAt)
+            : a.position - b.position
+        );
+      });
+      closeLayerDialog();
+    } catch (saveError) {
+      console.error(saveError);
+      setError(
+        (saveError as Error).message ?? "Opslaan van AI-laag is mislukt."
+      );
+    } finally {
+      setLayerSaving(false);
+    }
+  }
+
+  async function handleLayerToggle(layer: AiResponseLayerRow) {
+    setLayerActionId(layer.id);
+    setLayerActionType("toggle");
+    setError(null);
+    try {
+      const response = await fetch(`/api/ai-layers/${layer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled: !layer.isEnabled }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Bijwerken van AI-laag is mislukt.");
+      }
+      const updated = data.layer as AiResponseLayerRow;
+      setAiLayers((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item))
+      );
+    } catch (updateError) {
+      console.error(updateError);
+      setError(
+        (updateError as Error).message ?? "Bijwerken van AI-laag is mislukt."
+      );
+    } finally {
+      setLayerActionId(null);
+      setLayerActionType(null);
+    }
+  }
+
+  async function handleLayerDelete(layerId: string) {
+    setLayerActionId(layerId);
+    setLayerActionType("delete");
+    setError(null);
+    try {
+      const response = await fetch(`/api/ai-layers/${layerId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok && response.status !== 204) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error ?? "Verwijderen van AI-laag is mislukt.");
+      }
+      setAiLayers((prev) => prev.filter((item) => item.id !== layerId));
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(
+        (deleteError as Error).message ?? "Verwijderen van AI-laag is mislukt."
+      );
+    } finally {
+      setLayerActionId(null);
+      setLayerActionType(null);
     }
   }
 
@@ -2387,6 +2609,150 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                       )}
                     </div>
 
+                    <div className="rounded-2xl bg-[#f1f1f1] p-4">
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                              <ShieldCheck className="size-4 text-emerald-500" />
+                              <span>AI-lagen</span>
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Laat antwoorden extra controles doorlopen voordat ze
+                              naar de coach gaan.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openLayerDialogFor(null)}
+                            disabled={availableModels.length === 0}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            <Plus className="size-3.5" />
+                            <span>Nieuwe laag</span>
+                          </button>
+                        </div>
+                        {isLayerLoading ? (
+                          <p className="text-sm text-slate-500">
+                            AI-lagen worden geladen...
+                          </p>
+                        ) : aiLayers.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-500">
+                            Nog geen AI-lagen ingesteld. Voeg een laag toe om
+                            schrijfstijl, feitelijke juistheid of andere
+                            voorwaarden af te dwingen.
+                          </div>
+                        ) : (
+                          <ul className="space-y-3">
+                            {aiLayers.map((layer) => (
+                              <li
+                                key={layer.id}
+                                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                              >
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-semibold text-slate-900">
+                                        {layer.name}
+                                      </p>
+                                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                                        {layerTargetLabels[layer.target]}
+                                      </span>
+                                      <span
+                                        className={[
+                                          "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                          layer.isEnabled
+                                            ? "bg-emerald-50 text-emerald-700"
+                                            : "bg-slate-200 text-slate-600",
+                                        ].join(" ")}
+                                      >
+                                        {layer.isEnabled ? "Actief" : "Uit"}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Model:{" "}
+                                      <span className="font-medium">
+                                        {getModelLabel(layer.model)}
+                                      </span>{" "}
+                                      • Temperatuur:{" "}
+                                      {layer.temperature.toFixed(1)}
+                                    </p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openLayerDialogFor(layer)}
+                                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
+                                    >
+                                      Bewerken
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleLayerDelete(layer.id)}
+                                      disabled={
+                                        layerActionId === layer.id &&
+                                        layerActionType === "delete"
+                                      }
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white disabled:opacity-50"
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                      {layerActionId === layer.id &&
+                                      layerActionType === "delete"
+                                        ? "Verwijderen..."
+                                        : "Verwijderen"}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="mt-3 space-y-1">
+                                  <p className="text-[11px] font-semibold uppercase text-slate-400">
+                                    Doel
+                                  </p>
+                                  <p className="text-sm text-slate-700">
+                                    {layer.description}
+                                  </p>
+                                </div>
+                                <div className="mt-3 space-y-1">
+                                  <p className="text-[11px] font-semibold uppercase text-slate-400">
+                                    Instructies
+                                  </p>
+                                  <p className="text-sm text-slate-800 whitespace-pre-line">
+                                    {layer.instructions}
+                                  </p>
+                                </div>
+                                <div className="mt-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleLayerToggle(layer)}
+                                    disabled={
+                                      layerActionId === layer.id &&
+                                      layerActionType === "toggle"
+                                    }
+                                    className={[
+                                      "rounded-lg px-3 py-1.5 text-xs font-semibold",
+                                      layer.isEnabled
+                                        ? "border border-amber-200 text-amber-700 hover:bg-amber-50"
+                                        : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50",
+                                      layerActionId === layer.id &&
+                                      layerActionType === "toggle"
+                                        ? "opacity-50"
+                                        : "",
+                                    ].join(" ")}
+                                  >
+                                    {layerActionId === layer.id &&
+                                    layerActionType === "toggle"
+                                      ? "Bijwerken..."
+                                      : layer.isEnabled
+                                        ? "Uitschakelen"
+                                        : "Inschakelen"}
+                                  </button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="grid gap-3 lg:grid-cols-2 bg-[#f1f1f1] p-4 rounded-3xl">
                       <div className="rounded-2xl border border-slate-200 bg-white p-4">
                         <div className="flex items-center justify-between">
@@ -2770,6 +3136,172 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={layerDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeLayerDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl space-y-4">
+          <DialogHeader>
+            <DialogTitle>
+              {editingLayer ? "AI-laag bewerken" : "Nieuwe AI-laag"}
+            </DialogTitle>
+            <DialogDescription>
+              Ontwerp een extra controlemoment voordat antwoorden zichtbaar
+              worden. Elke laag voert een extra modelaanroep uit.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleLayerSubmit} className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                Naam
+                <input
+                  type="text"
+                  value={layerForm.name}
+                  onChange={(event) =>
+                    setLayerForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                Doelgroep
+                <select
+                  value={layerForm.target}
+                  onChange={(event) =>
+                    setLayerForm((prev) => ({
+                      ...prev,
+                      target: event.target.value as AiLayerTarget,
+                    }))
+                  }
+                  className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                >
+                  <option value="COACH">Coachkanaal</option>
+                  <option value="OVERSEER">Overzichtscoach</option>
+                  <option value="ALL">Beide agenten</option>
+                </select>
+              </label>
+            </div>
+            <label className="flex flex-col gap-1 text-sm">
+              Doel van de laag
+              <textarea
+                value={layerForm.description}
+                onChange={(event) =>
+                  setLayerForm((prev) => ({
+                    ...prev,
+                    description: event.target.value,
+                  }))
+                }
+                className="min-h-[80px] rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                placeholder="Bijv. controleer schrijfstijl of voeg waarschuwingen toe bij onzekerheden."
+                required
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Instructies voor het model
+              <textarea
+                value={layerForm.instructions}
+                onChange={(event) =>
+                  setLayerForm((prev) => ({
+                    ...prev,
+                    instructions: event.target.value,
+                  }))
+                }
+                className="min-h-[160px] rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                placeholder="Beschrijf precies hoe deze laag het conceptantwoord moet controleren of herschrijven."
+                required
+              />
+            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                Model
+                <select
+                  value={layerForm.model}
+                  onChange={(event) =>
+                    setLayerForm((prev) => ({
+                      ...prev,
+                      model: event.target.value,
+                    }))
+                  }
+                  className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                  required
+                >
+                  <option value="" disabled>
+                    Kies een model
+                  </option>
+                  {availableModels.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                Temperatuur
+                <input
+                  type="number"
+                  min={0}
+                  max={1.2}
+                  step={0.1}
+                  value={layerForm.temperature}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setLayerForm((prev) => ({
+                      ...prev,
+                      temperature: Number.isNaN(next) ? prev.temperature : next,
+                    }));
+                  }}
+                  className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={layerForm.isEnabled}
+                onChange={(event) =>
+                  setLayerForm((prev) => ({
+                    ...prev,
+                    isEnabled: event.target.checked,
+                  }))
+                }
+                className="size-4"
+              />
+              Laag is actief
+            </label>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+              Elke extra laag voegt een extra modelaanroep toe en kan het
+              antwoord iets vertragen. Gebruik korte instructies voor soepele
+              prestaties.
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeLayerDialog}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white"
+              >
+                Annuleren
+              </button>
+              <button
+                type="submit"
+                disabled={isLayerSaving}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {isLayerSaving
+                  ? "Opslaan..."
+                  : editingLayer
+                    ? "Wijzigingen opslaan"
+                    : "Laag toevoegen"}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={feedbackDialogOpen}

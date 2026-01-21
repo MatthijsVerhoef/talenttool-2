@@ -1,4 +1,7 @@
+import { AgentKind } from "@prisma/client";
+
 import { runAgentCompletion } from "@/lib/ai/openai";
+import { applyResponseLayers } from "@/lib/agents/response-layers";
 import { DEFAULT_COACH_ROLE_PROMPT, DEFAULT_OVERSEER_ROLE_PROMPT } from "@/lib/agents/prompts";
 import {
   getAIModelSettings,
@@ -69,19 +72,30 @@ export async function runCoachAgent(
     messages,
   });
 
+  const layered = await applyResponseLayers({
+    agentType: AgentKind.COACH,
+    draftReply: completion.outputText,
+    context: {
+      latestUserMessage: userMessage,
+      client,
+      documentSnippets,
+    },
+  });
+
   await appendClientMessage(
     clientId,
     "assistant",
-    completion.outputText,
+    layered.reply,
     {
       responseId: completion.responseId,
       usage: completion.usage,
+      layers: layered.layers,
     },
     "AI",
   );
 
   return {
-    reply: completion.outputText,
+    reply: layered.reply,
     responseId: completion.responseId,
     usage: completion.usage,
   };
@@ -113,13 +127,23 @@ export async function runOverseerAgent(userMessage: string): Promise<AgentReply>
     ],
   });
 
-  await recordOverseerMessage("assistant", "AI", completion.outputText, {
+  const layered = await applyResponseLayers({
+    agentType: AgentKind.OVERSEER,
+    draftReply: completion.outputText,
+    context: {
+      latestUserMessage: userMessage,
+      additionalContext: clientDigests,
+    },
+  });
+
+  await recordOverseerMessage("assistant", "AI", layered.reply, {
     responseId: completion.responseId,
     usage: completion.usage,
+    layers: layered.layers,
   });
 
   return {
-    reply: completion.outputText,
+    reply: layered.reply,
     responseId: completion.responseId,
     usage: completion.usage,
   };
