@@ -16,15 +16,12 @@ interface AuthFormProps {
 
 export function AuthForm({ invite }: AuthFormProps = {}) {
   const router = useRouter();
-  const [mode, setMode] = useState<"sign-in" | "sign-up">(
-    invite ? "sign-up" : "sign-in"
-  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
   const isInviteFlow = Boolean(invite);
-  const isSignUp = mode === "sign-up";
+  const isSignUp = isInviteFlow;
   const inviteExpiresAt = useMemo(() => {
     if (!invite?.expiresAt) {
       return null;
@@ -45,6 +42,11 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
 
     if (!email || !password || (isSignUp && !name)) {
       setError("Vul alle vereiste velden in.");
+      return;
+    }
+
+    if (!isInviteFlow && isSignUp) {
+      setError("Registreren kan alleen via een uitnodiging.");
       return;
     }
 
@@ -117,9 +119,7 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
           <p className="mt-2 text-sm text-slate-500">
             {isInviteFlow
               ? `Je bent uitgenodigd om als coach te starten via ${invite?.email}.`
-              : isSignUp
-                ? "Meld je aan om toegang te krijgen tot je coachomgeving."
-                : "Start met het begeleiden van cliënten via het coachportaal."}
+              : "Log in met je bestaande account. Nieuwe coach? Vraag je beheerder om een uitnodiging."}
           </p>
           {isInviteFlow && inviteExpiresAt && (
             <p className="text-xs text-slate-500">
@@ -213,18 +213,7 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
           </p>
         ) : (
           <p className="text-center text-sm text-slate-500">
-            {isSignUp ? "Al een account?" : "Nog geen account?"}{" "}
-            <button
-              type="button"
-              onClick={() => {
-                setMode(isSignUp ? "sign-in" : "sign-up");
-                setError(null);
-                setSuccess(null);
-              }}
-              className="font-semibold text-slate-900 underline"
-            >
-              {isSignUp ? "Log in" : "Maak er een aan"}
-            </button>
+            Toegang nodig? Vraag een beheerder om een uitnodiging.
           </p>
         )}
       </div>
