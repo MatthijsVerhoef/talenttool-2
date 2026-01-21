@@ -9,9 +9,9 @@ import {
 
 export async function POST(
   request: Request,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> },
 ) {
-  const { token } = params;
+  const { token } = await params;
   if (!token) {
     return NextResponse.json({ error: "Uitnodiging ontbreekt" }, { status: 400 });
   }

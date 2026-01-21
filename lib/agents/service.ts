@@ -89,7 +89,7 @@ export async function runCoachAgent(
     {
       responseId: completion.responseId,
       usage: completion.usage,
-      layers: layered.layers,
+      layers: layered.layers.map((layer) => ({ id: layer.id, name: layer.name })),
     },
     "AI",
   );
@@ -139,7 +139,7 @@ export async function runOverseerAgent(userMessage: string): Promise<AgentReply>
   await recordOverseerMessage("assistant", "AI", layered.reply, {
     responseId: completion.responseId,
     usage: completion.usage,
-    layers: layered.layers,
+    layers: layered.layers.map((layer) => ({ id: layer.id, name: layer.name })),
   });
 
   return {

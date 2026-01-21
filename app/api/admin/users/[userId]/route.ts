@@ -42,6 +42,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
 
   try {
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    if (!targetUser) {
+      return NextResponse.json({ error: "Gebruiker niet gevonden." }, { status: 404 });
+    }
+
     if (targetUser.role === "ADMIN" && nextRole !== "ADMIN") {
       const adminCount = await countAdmins();
       if (adminCount <= 1) {

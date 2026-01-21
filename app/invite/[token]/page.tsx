@@ -5,13 +5,7 @@ import { AuthForm } from "@/components/auth/auth-form";
 import { auth } from "@/lib/auth";
 import { findActiveInviteByToken } from "@/lib/data/users";
 
-interface InvitePageProps {
-  params: {
-    token: string;
-  };
-}
-
-export default async function InvitePage({ params }: InvitePageProps) {
+export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const headerStore = await headers();
   const session = await auth.api.getSession({
     headers: {
@@ -23,7 +17,8 @@ export default async function InvitePage({ params }: InvitePageProps) {
     redirect("/");
   }
 
-  const invite = await findActiveInviteByToken(params.token);
+  const { token } = await params;
+  const invite = await findActiveInviteByToken(token);
 
   if (!invite) {
     return (

@@ -4,9 +4,9 @@ import { findActiveInviteByToken } from "@/lib/data/users";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> },
 ) {
-  const { token } = params;
+  const { token } = await params;
   if (!token) {
     return NextResponse.json({ error: "Uitnodiging ontbreekt" }, { status: 400 });
   }
