@@ -123,13 +123,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [isReportGenerating, setReportGenerating] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [activeChannel, setActiveChannel] = useState<"coach" | "meta">("coach");
-  const [isRightColumnOpen, setRightColumnOpen] = useState(false);
-  const [mobileView, setMobileView] = useState<"list" | "chat">(() => {
-    if (typeof window === "undefined") {
-      return "chat";
+  const [mobileView, setMobileView] = useState<"list" | "chat" | "details">(
+    () => {
+      if (typeof window === "undefined") {
+        return "chat";
+      }
+      return window.innerWidth < 768 ? "list" : "chat";
     }
-    return window.innerWidth < 768 ? "list" : "chat";
-  });
+  );
   const [isClientDialogOpen, setClientDialogOpen] = useState(false);
   const [isCreateClientDialogOpen, setCreateClientDialogOpen] = useState(false);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
@@ -273,16 +274,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [currentUser]);
 
   useEffect(() => {
-    setRightColumnOpen(false);
-  }, [currentUser, selectedClientId]);
-
-  useEffect(() => {
-    if (mobileView === "list") {
-      setRightColumnOpen(false);
-    }
-  }, [mobileView]);
-
-  useEffect(() => {
     if (!isAdmin && activeSidebarTab !== "dashboard") {
       setActiveSidebarTab("dashboard");
     }
@@ -295,21 +286,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [isAdmin, activeChannel]);
 
   useEffect(() => {
-    const viewportIsMobile =
-      typeof window !== "undefined" && window.innerWidth < 768;
-    if (!isMobile) {
-      if (viewportIsMobile) {
-        return;
-      }
+    if (!isMobile && mobileView !== "chat") {
       setMobileView("chat");
       return;
     }
-    if (activeSidebarTab === "dashboard") {
-      setMobileView("list");
-    } else {
+    if (isMobile && activeSidebarTab !== "dashboard" && mobileView !== "chat") {
       setMobileView("chat");
     }
-  }, [isMobile, activeSidebarTab]);
+  }, [isMobile, activeSidebarTab, mobileView]);
 
   const selectedClient = useMemo(
     () => clientList.find((client) => client.id === selectedClientId),
@@ -319,9 +303,12 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const newClientInitials = getInitials(newClientForm.name);
   const isDashboardTab = activeSidebarTab === "dashboard";
   const showSidebar = !isMobile || mobileView === "list";
-  const showMainContent = !isMobile || mobileView === "chat";
+  const showMainContent = !isMobile || mobileView !== "list";
   const isMobileDashboardChat =
     isMobile && isDashboardTab && mobileView === "chat";
+  const isMobileDetailsView =
+    isMobile && isDashboardTab && mobileView === "details";
+  const showMenuButton = isMobile && mobileView !== "list";
 
   useEffect(() => {
     if (!selectedClientId) return;
@@ -1227,6 +1214,373 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
   }, [overseerThread, activeChannel, scrollToBottom]);
 
+  const renderClientDetailsContent = (variant: "desktop" | "mobile") => {
+    const toggleClasses = [
+      "inline-flex items-center rounded-full w-fit border mb-4 border-slate-200 bg-slate-50 p-1.5 text-xs font-medium text-slate-600",
+      variant === "mobile" ? "mx-4 mt-4" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const bodyClasses =
+      variant === "desktop"
+        ? "space-y-4 z-20 overflow-y-auto max-h-[92vh] pb-8 px-4 lg:px-0"
+        : "space-y-4 overflow-y-auto pb-8 px-4";
+
+    return (
+      <>
+        <div className={toggleClasses}>
+          <button
+            onClick={() => setActiveChannel("coach")}
+            className={`rounded-full z-20 px-4 py-1.5 transition ${
+              activeChannel === "coach"
+                ? "bg-white text-slate-900 shadow"
+                : "hover:text-slate-900"
+            }`}
+          >
+            Coach assistent
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveChannel("meta")}
+              className={`rounded-full px-4 py-1.5 transition ${
+                activeChannel === "meta"
+                  ? "bg-white text-slate-900 shadow"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              Meta twin
+            </button>
+          )}
+        </div>
+        <div className={bodyClasses}>
+          <div className="rounded-3xl bg-white p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
+                {selectedClient?.avatarUrl ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedClient.avatarUrl}
+                      alt={selectedClient.name}
+                      className="size-10 rounded-lg object-cover"
+                    />
+                  </>
+                ) : selectedClientInitials ? (
+                  <span className="text-sm font-semibold">
+                    {selectedClientInitials}
+                  </span>
+                ) : (
+                  <UserRound className="size-4" />
+                )}
+              </div>
+              <div>
+                {" "}
+                <p className="text-sm font-semibold text-slate-900">
+                  {selectedClient?.name ?? "Geen cliënt"}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {selectedClient?.focusArea || "Geen focus"}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
+              {selectedClient?.summary ||
+                "Selecteer een cliënt om details te bekijken."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {focusTags.length > 0 ? (
+                focusTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
+                  >
+                    {tag}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[11px] text-slate-400">
+                  Geen trefwoorden
+                </span>
+              )}
+            </div>
+            {isAdmin && selectedClient && (
+              <Dialog
+                open={isClientDialogOpen}
+                onOpenChange={(open) => {
+                  setClientDialogOpen(open);
+                  if (!open) {
+                    setAvatarFile(null);
+                    setEditingClientId(null);
+                  }
+                }}
+              >
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingClientId(selectedClient.id);
+                      setAvatarFile(null);
+                      setClientForm({
+                        name: selectedClient.name,
+                        focusArea: selectedClient.focusArea,
+                        summary: selectedClient.summary,
+                        goals: selectedClient.goals.join(", "),
+                        avatarUrl: selectedClient.avatarUrl ?? "",
+                        coachId: selectedClient.coachId ?? "",
+                      });
+                    }}
+                    className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <Edit2 className="size-3.5" />
+                    Bewerk cliënt
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl space-y-4">
+                  <DialogHeader>
+                    <DialogTitle>Bewerk cliënt</DialogTitle>
+                    <DialogDescription>
+                      Werk gegevens bij voor {selectedClient.name}.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form className="space-y-4" onSubmit={handleClientSave}>
+                    <div className="flex items-center gap-3">
+                      <div className="size-16 rounded-full border border-slate-200 bg-slate-50 text-slate-600 flex items-center justify-center overflow-hidden">
+                        {avatarFile ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={URL.createObjectURL(avatarFile)}
+                              alt="Nieuwe avatar"
+                              className="size-16 object-cover"
+                            />
+                          </>
+                        ) : clientForm.avatarUrl ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={clientForm.avatarUrl}
+                              alt={clientForm.name}
+                              className="size-16 object-cover"
+                            />
+                          </>
+                        ) : selectedClientInitials ? (
+                          <span className="text-sm font-semibold">
+                            {selectedClientInitials}
+                          </span>
+                        ) : (
+                          <UserRound className="size-5" />
+                        )}
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <input
+                          id={editClientAvatarInputId}
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) =>
+                            setAvatarFile(event.target.files?.[0] ?? null)
+                          }
+                        />
+                        <label
+                          htmlFor={editClientAvatarInputId}
+                          className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Wijzig avatar
+                        </label>
+                        {clientForm.avatarUrl && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setClientForm((form) => ({
+                                ...form,
+                                avatarUrl: "",
+                              }));
+                              setAvatarFile(null);
+                            }}
+                            className="text-xs text-red-500 hover:underline"
+                          >
+                            Verwijder avatar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Naam
+                      <input
+                        type="text"
+                        value={clientForm.name}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            name: event.target.value,
+                          }))
+                        }
+                        className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        required
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Focusgebied
+                      <input
+                        type="text"
+                        value={clientForm.focusArea}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            focusArea: event.target.value,
+                          }))
+                        }
+                        className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Samenvatting
+                      <textarea
+                        value={clientForm.summary}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            summary: event.target.value,
+                          }))
+                        }
+                        rows={4}
+                        className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Doelen (gescheiden door komma)
+                      <textarea
+                        value={clientForm.goals}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            goals: event.target.value,
+                          }))
+                        }
+                        rows={3}
+                        className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Toegewezen coach
+                      <select
+                        value={clientForm.coachId}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            coachId: event.target.value,
+                          }))
+                        }
+                        className="rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        disabled={isCoachOptionsLoading}
+                      >
+                        <option value="">Nog niet toegewezen</option>
+                        {coachOptions.map((coach) => (
+                          <option key={coach.id} value={coach.id}>
+                            {coach.name?.trim()
+                              ? `${coach.name} (${coach.email})`
+                              : coach.email}
+                          </option>
+                        ))}
+                      </select>
+                      {coachOptionsError ? (
+                        <span className="text-xs text-rose-600">
+                          {coachOptionsError}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-500">
+                          Bepaal welke coach toegang heeft tot dit dossier.
+                        </span>
+                      )}
+                    </label>
+                    <div className="flex justify-end gap-2 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => setClientDialogOpen(false)}
+                        className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
+                      >
+                        Annuleren
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isClientSaving}
+                        className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                      >
+                        {isClientSaving ? "Opslaan..." : "Opslaan"}
+                      </button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+          <div className="rounded-3xl bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-foreground font-semibold">
+                  Laatste rapport
+                </p>
+                {clientReport?.createdAt && (
+                  <p className="text-[11px] text-slate-500">
+                    {new Date(clientReport.createdAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {clientReport?.content && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadReport}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-50"
+                  >
+                    Download
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleGenerateReport}
+                  disabled={!selectedClientId || isReportGenerating}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {isReportGenerating ? "Bezig..." : "Genereer"}
+                </button>
+              </div>
+            </div>
+            {reportError && (
+              <p className="mt-2 text-[12px] text-red-500">{reportError}</p>
+            )}
+            {clientReport?.createdAt && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Laatste rapport:{" "}
+                {new Date(clientReport.createdAt).toLocaleString()}
+              </p>
+            )}
+            <div className="mt-3 min-h-[90px] rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[13px] text-slate-700 whitespace-pre-wrap">
+              {clientReport?.content
+                ? clientReport.content
+                : "Nog geen rapport gegenereerd."}
+            </div>
+          </div>
+          <div className="rounded-3xl bg-white p-4">
+            <p className="text-[11px] uppercase tracking-wide text-foreground font-semibold">
+              Sterktes & aandacht
+            </p>
+            <ul className="mt-3 space-y-2">
+              {strengthsAndWatchouts.map((item, idx) => (
+                <li
+                  key={`${item}-${idx}`}
+                  className="text-[13px] text-slate-700"
+                >
+                  • {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </>
+    );
+  };
+
   return (
     <>
       <img
@@ -1234,13 +1588,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         src="/talenttool-bg.png"
         className="absolute top-0 left-0 opacity-100 w-screen h-screen -z-1"
       />
-      {isRightColumnOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/30 lg:hidden"
-          onClick={() => setRightColumnOpen(false)}
-        />
-      )}
-      {isMobile && mobileView === "chat" && !isDashboardTab && (
+      {/* {showMenuButton && (
         <button
           type="button"
           onClick={() => setMobileView("list")}
@@ -1248,7 +1596,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         >
           Menu
         </button>
-      )}
+      )} */}
       {/* Used a very flat light grey background for the app container */}
       <div className="relative flex  h-screen max-h-screen w-full overflow-hidden text-slate-900">
         {/* Sidebar: Flat, bordered, minimal */}
@@ -2134,28 +2482,22 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               <div className="relative flex-1 min-h-0 overflow-hidden p-1 md:p-2">
                 <div
                   className="
-    relative flex h-full min-h-0 gap-4
-    rounded-xl
-    md:rounded-[36px]
-    overflow-hidden
-
-    bg-white/25
-    backdrop-blur-2xl backdrop-saturate-120
-
-    p-0 md:p-4
-    pt-0
-    text-sm text-slate-800
-
-  "
+                    relative flex h-full min-h-0 gap-4
+                    rounded-xl
+                    md:rounded-[36px]
+                    overflow-hidden
+                    bg-white/25
+                    backdrop-blur-2xl backdrop-saturate-120
+                    p-0 md:p-4
+                    pt-0
+                    text-sm text-slate-800
+                  "
                 >
                   {/* Border */}
                   <div className="pointer-events-none absolute inset-0 rounded-[36px] border border-white z-10" />
 
                   {/* Top highlight */}
-                  <div
-                    className="pointer-events-none absolute inset-0 rounded-[36px]
-  bg-gradient-to-b from-white/45 via-white/18 to-transparent z-10"
-                  />
+                  <div className="pointer-events-none absolute inset-0 rounded-[36px] bg-gradient-to-b from-white/45 via-white/18 to-transparent z-10" />
 
                   {/* Actual content */}
                   <section className="flex flex-1 relative z-20 min-h-0 flex-col rounded-2xl pb-0 min-w-full lg:min-w-0">
@@ -2165,9 +2507,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           <button
                             type="button"
                             onClick={() => setMobileView("list")}
-                            className="inline-flex items-center gap-1 rounded-full  text-xs font-semibold text-slate-600"
+                            className="inline-flex items-center gap-1 rounded-full text-xs font-semibold text-slate-600"
                           >
-                            <ArrowLeft className="size-3" />
+                            <ArrowLeft className="size-4" />
                           </button>
                           <div className="flex flex-1 items-center gap-3 min-w-0">
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white overflow-hidden">
@@ -2199,9 +2541,13 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           </div>
                           <button
                             type="button"
-                            onClick={() => setRightColumnOpen(true)}
+                            onClick={() => {
+                              if (isMobile) {
+                                setMobileView("details");
+                              }
+                            }}
                             disabled={!selectedClient}
-                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 lg:hidden"
                           >
                             Cliëntdetails
                           </button>
@@ -2383,436 +2729,46 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                       )}
                     </div>
                   </section>
-                  <aside
-                    className={[
-                      "min-h-0 relative z-50 w-full shrink-0 text-sm pt-3 text-slate-700 lg:w-84",
-                      "transition-transform duration-200 ease-in-out lg:transition-none",
-                      isRightColumnOpen
-                        ? "translate-x-0"
-                        : "translate-x-full lg:translate-x-0",
-                      "fixed inset-y-0 right-0 w-full max-w-sm bg-white shadow-2xl lg:static lg:max-w-none lg:bg-transparent lg:shadow-none",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center justify-between px-4 lg:hidden">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Cliëntdetails
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setRightColumnOpen(false)}
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
-                      >
-                        Sluiten
-                      </button>
-                    </div>
-                    <div className="inline-flex items-center rounded-full border mb-4 border-slate-200 bg-slate-50 p-1.5 text-xs font-medium text-slate-600">
-                      <button
-                        onClick={() => setActiveChannel("coach")}
-                        className={`rounded-full px-4 py-1.5 transition ${
-                          activeChannel === "coach"
-                            ? "bg-white text-slate-900 shadow"
-                            : "hover:text-slate-900"
-                        }`}
-                      >
-                        Coach assistent
-                      </button>
-                      {isAdmin && (
-                        <button
-                          onClick={() => setActiveChannel("meta")}
-                          className={`rounded-full px-4 py-1.5 transition ${
-                            activeChannel === "meta"
-                              ? "bg-white text-slate-900 shadow"
-                              : "hover:text-slate-900"
-                          }`}
-                        >
-                          Meta twin
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-4 overflow-y-auto max-h-[92vh] pb-8 px-4 lg:px-0">
-                      <div className="rounded-3xl bg-white p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
-                            {selectedClient?.avatarUrl ? (
-                              <>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={selectedClient.avatarUrl}
-                                  alt={selectedClient.name}
-                                  className="size-10 rounded-lg object-cover"
-                                />
-                              </>
-                            ) : selectedClientInitials ? (
-                              <span className="text-sm font-semibold">
-                                {selectedClientInitials}
-                              </span>
-                            ) : (
-                              <UserRound className="size-4" />
-                            )}
-                          </div>
-                          <div>
-                            {" "}
-                            <p className="text-sm font-semibold text-slate-900">
-                              {selectedClient?.name ?? "Geen cliënt"}
-                            </p>
-                            <p className="text-[11px] text-slate-500">
-                              {selectedClient?.focusArea || "Geen focus"}
-                            </p>
-                          </div>
-                        </div>
-                        <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
-                          {selectedClient?.summary ||
-                            "Selecteer een cliënt om details te bekijken."}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {focusTags.length > 0 ? (
-                            focusTags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
-                              >
-                                {tag}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-[11px] text-slate-400">
-                              Geen trefwoorden
-                            </span>
-                          )}
-                        </div>
-                        {isAdmin && selectedClient && (
-                          <Dialog
-                            open={isClientDialogOpen}
-                            onOpenChange={(open) => {
-                              setClientDialogOpen(open);
-                              if (!open) {
-                                setAvatarFile(null);
-                                setEditingClientId(null);
-                              }
-                            }}
-                          >
-                            <DialogTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingClientId(selectedClient.id);
-                                  setAvatarFile(null);
-                                  setClientForm({
-                                    name: selectedClient.name,
-                                    focusArea: selectedClient.focusArea,
-                                    summary: selectedClient.summary,
-                                    goals: selectedClient.goals.join(", "),
-                                    avatarUrl: selectedClient.avatarUrl ?? "",
-                                    coachId: selectedClient.coachId ?? "",
-                                  });
-                                }}
-                                className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                              >
-                                <Edit2 className="size-3.5" />
-                                Bewerk cliënt
-                              </button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl space-y-4">
-                              <DialogHeader>
-                                <DialogTitle>Bewerk cliënt</DialogTitle>
-                                <DialogDescription>
-                                  Werk gegevens bij voor {selectedClient.name}.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <form
-                                className="space-y-4"
-                                onSubmit={handleClientSave}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className="size-16 rounded-full border border-slate-200 bg-slate-50 text-slate-600 flex items-center justify-center overflow-hidden">
-                                    {avatarFile ? (
-                                      <>
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                          src={URL.createObjectURL(avatarFile)}
-                                          alt="Nieuwe avatar"
-                                          className="size-16 object-cover"
-                                        />
-                                      </>
-                                    ) : clientForm.avatarUrl ? (
-                                      <>
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                          src={clientForm.avatarUrl}
-                                          alt={clientForm.name}
-                                          className="size-16 object-cover"
-                                        />
-                                      </>
-                                    ) : selectedClientInitials ? (
-                                      <span className="text-sm font-semibold">
-                                        {selectedClientInitials}
-                                      </span>
-                                    ) : (
-                                      <UserRound className="size-5" />
-                                    )}
-                                  </div>
-                                  <div className="space-y-2 text-sm">
-                                    <input
-                                      id={editClientAvatarInputId}
-                                      type="file"
-                                      accept="image/*"
-                                      className="sr-only"
-                                      onChange={(event) =>
-                                        setAvatarFile(
-                                          event.target.files?.[0] ?? null
-                                        )
-                                      }
-                                    />
-                                    <label
-                                      htmlFor={editClientAvatarInputId}
-                                      className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
-                                    >
-                                      Kies nieuwe foto
-                                    </label>
-                                    {avatarFile && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setAvatarFile(null)}
-                                        className="block text-left text-xs text-slate-500 hover:text-slate-700"
-                                      >
-                                        Verwijder selectie
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                                <label className="flex flex-col gap-1 text-sm">
-                                  Naam
-                                  <input
-                                    type="text"
-                                    value={clientForm.name}
-                                    onChange={(event) =>
-                                      setClientForm((form) => ({
-                                        ...form,
-                                        name: event.target.value,
-                                      }))
-                                    }
-                                    className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                    required
-                                  />
-                                </label>
-                                <label className="flex flex-col gap-1 text-sm">
-                                  Focusgebied
-                                  <input
-                                    type="text"
-                                    value={clientForm.focusArea}
-                                    onChange={(event) =>
-                                      setClientForm((form) => ({
-                                        ...form,
-                                        focusArea: event.target.value,
-                                      }))
-                                    }
-                                    className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                  />
-                                </label>
-                                <label className="flex flex-col gap-1 text-sm">
-                                  Samenvatting
-                                  <textarea
-                                    value={clientForm.summary}
-                                    onChange={(event) =>
-                                      setClientForm((form) => ({
-                                        ...form,
-                                        summary: event.target.value,
-                                      }))
-                                    }
-                                    rows={4}
-                                    className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                  />
-                                </label>
-                                <label className="flex flex-col gap-1 text-sm">
-                                  Doelen (gescheiden door komma)
-                                  <textarea
-                                    value={clientForm.goals}
-                                    onChange={(event) =>
-                                      setClientForm((form) => ({
-                                        ...form,
-                                        goals: event.target.value,
-                                      }))
-                                    }
-                                    rows={3}
-                                    className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                  />
-                                </label>
-                                <label className="flex flex-col gap-1 text-sm">
-                                  Toegewezen coach
-                                  <select
-                                    value={clientForm.coachId}
-                                    onChange={(event) =>
-                                      setClientForm((form) => ({
-                                        ...form,
-                                        coachId: event.target.value,
-                                      }))
-                                    }
-                                    className="rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                    disabled={isCoachOptionsLoading}
-                                  >
-                                    <option value="">
-                                      Nog niet toegewezen
-                                    </option>
-                                    {coachOptions.map((coach) => (
-                                      <option key={coach.id} value={coach.id}>
-                                        {coach.name?.trim()
-                                          ? `${coach.name} (${coach.email})`
-                                          : coach.email}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  {coachOptionsError ? (
-                                    <span className="text-xs text-rose-600">
-                                      {coachOptionsError}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-slate-500">
-                                      Bepaal welke coach toegang heeft tot dit
-                                      dossier.
-                                    </span>
-                                  )}
-                                </label>
-                                <div className="flex justify-end gap-2 text-sm">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setClientDialogOpen(false);
-                                      setAvatarFile(null);
-                                      setEditingClientId(null);
-                                    }}
-                                    className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
-                                  >
-                                    Annuleren
-                                  </button>
-                                  <button
-                                    type="submit"
-                                    disabled={isClientSaving}
-                                    className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                                  >
-                                    {isClientSaving ? "Opslaan..." : "Opslaan"}
-                                  </button>
-                                </div>
-                              </form>
-                            </DialogContent>
-                          </Dialog>
-                        )}
-                      </div>
-                      <div className="rounded-3xl bg-white p-4">
-                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-foreground font-semibold">
-                          <span>Doelen</span>
-                          <span className="text-slate-400">
-                            {selectedClient?.goals.length ?? 0}
-                          </span>
-                        </div>
-                        <ul className="mt-3 space-y-2">
-                          {selectedClient?.goals.length ? (
-                            selectedClient.goals.map((goal, index) => (
-                              <li
-                                key={`${goal}-${index}`}
-                                className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[13px]"
-                              >
-                                {goal}
-                              </li>
-                            ))
-                          ) : (
-                            <p className="text-[13px] text-slate-500">
-                              Geen doelen ingesteld.
-                            </p>
-                          )}
-                        </ul>
-                      </div>
-                      <div className="rounded-3xl bg-white p-4">
-                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-foreground font-semibold">
-                          <span>Documenten</span>
-                          <span className="text-slate-400">
-                            {documents.length}
-                          </span>
-                        </div>
-                        {documents.length === 0 ? (
-                          <p className="mt-2 text-[13px] text-slate-500">
-                            Nog geen bestanden.
-                          </p>
-                        ) : (
-                          <div className="mt-3 space-y-2">
-                            {documents.map((doc) => (
-                              <div
-                                key={doc.id}
-                                className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
-                              >
-                                <p className="truncate text-[13px] font-medium text-slate-900">
-                                  {doc.originalName}
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  {(doc.size / 1024).toFixed(1)} KB •{" "}
-                                  {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="rounded-3xl bg-white p-4">
-                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-foreground font-semibold">
-                          <span>Rapport</span>
-                          <div className="inline-flex items-center gap-2">
-                            {clientReport?.content && (
-                              <button
-                                type="button"
-                                onClick={handleDownloadReport}
-                                className="rounded-full border border-slate-200 px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-50"
-                              >
-                                Download
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={handleGenerateReport}
-                              disabled={!selectedClientId || isReportGenerating}
-                              className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              {isReportGenerating ? "Bezig..." : "Genereer"}
-                            </button>
-                          </div>
-                        </div>
-                        {reportError && (
-                          <p className="mt-2 text-[12px] text-red-500">
-                            {reportError}
-                          </p>
-                        )}
-                        {clientReport?.createdAt && (
-                          <p className="mt-2 text-[11px] text-slate-500">
-                            Laatste rapport:{" "}
-                            {new Date(clientReport.createdAt).toLocaleString()}
-                          </p>
-                        )}
-                        <div className="mt-3 min-h-[90px] rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[13px] text-slate-700 whitespace-pre-wrap">
-                          {clientReport?.content
-                            ? clientReport.content
-                            : "Nog geen rapport gegenereerd."}
-                        </div>
-                      </div>
-                      <div className="rounded-3xl bg-white p-4">
-                        <p className="text-[11px] uppercase tracking-wide text-foreground font-semibold">
-                          Sterktes & aandacht
-                        </p>
-                        <ul className="mt-3 space-y-2">
-                          {strengthsAndWatchouts.map((item, idx) => (
-                            <li
-                              key={`${item}-${idx}`}
-                              className="text-[13px] text-slate-700"
-                            >
-                              • {item}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
+                  <aside className="hidden lg:flex min-h-0 w-84 shrink-0 flex-col text-sm text-slate-700">
+                    {renderClientDetailsContent("desktop")}
                   </aside>
                 </div>
               </div>
             </>
           )}
         </main>
+        {isMobileDetailsView && (
+          <div className="lg:hidden fixed inset-0 z-50 flex flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setMobileView("chat")}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
+              >
+                <ArrowLeft className="size-4" />
+                Terug
+              </button>
+              <div className="text-center min-w-0">
+                <p className="text-sm font-semibold text-slate-900">
+                  Cliëntdetails
+                </p>
+                <p className="text-[11px] text-slate-500 truncate">
+                  {selectedClient?.name ?? "Selecteer een cliënt"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileView("list")}
+                className="text-xs font-semibold text-slate-600"
+              >
+                Cliënten
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {renderClientDetailsContent("mobile")}
+            </div>
+          </div>
+        )}
       </div>
 
       <Dialog
