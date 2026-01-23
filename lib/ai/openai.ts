@@ -67,11 +67,15 @@ export async function runAgentCompletion(
       })),
   ].filter((entry) => typeof entry.content === "string" && entry.content.trim().length > 0);
 
-  const response = await client.responses.create({
+  const requestPayload: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
     model: options.model,
-    temperature: options.temperature ?? 0.4,
     input: conversation,
-  });
+  };
+  if (typeof options.temperature === "number") {
+    requestPayload.temperature = options.temperature;
+  }
+
+  const response = await client.responses.create(requestPayload);
 
   const outputText = extractText(response);
 

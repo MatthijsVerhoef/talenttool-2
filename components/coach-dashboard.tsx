@@ -158,12 +158,19 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [isCoachLoading, setCoachLoading] = useState(false);
   const [isOverseerLoading, setOverseerLoading] = useState(false);
   const [isDocUploading, setDocUploading] = useState(false);
-  const [clientReport, setClientReport] = useState<{
-    content: string;
-    createdAt: string | null;
-    id?: string;
-  } | null>(null);
+  const [clientReports, setClientReports] = useState<
+    Record<
+      string,
+      {
+        content: string;
+        createdAt: string | null;
+        id?: string;
+      } | null
+    >
+  >({});
+  const clientReport = selectedClientId ? clientReports[selectedClientId] ?? null : null;
   const [isReportGenerating, setReportGenerating] = useState(false);
+  const [isReportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [activeChannel, setActiveChannel] = useState<"coach" | "meta">("coach");
   const [mobileView, setMobileView] = useState<"list" | "chat" | "details">(
@@ -395,22 +402,63 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     isMobile && isDashboardTab && mobileView === "details";
   const showMenuButton = isMobile && mobileView !== "list";
 
-  useEffect(() => {
-    if (!selectedClientId) return;
-    const alreadyLoaded = clientHistories[selectedClientId];
-    if (!alreadyLoaded) {
-      void fetchClientHistory(selectedClientId);
-    }
-    if (!clientDocuments[selectedClientId]) {
-      void fetchClientDocuments(selectedClientId);
-    }
-    void fetchLatestReport(selectedClientId);
-  }, [selectedClientId, clientHistories, clientDocuments]);
+  const selectedClientHistory = selectedClientId
+    ? clientHistories[selectedClientId]
+    : undefined;
+  const selectedClientDocs = selectedClientId
+    ? clientDocuments[selectedClientId]
+    : undefined;
 
   useEffect(() => {
-    setClientReport(null);
+    if (!selectedClientId) return;
+    if (!selectedClientHistory) {
+      void fetchClientHistory(selectedClientId);
+    }
+    if (!selectedClientDocs) {
+      void fetchClientDocuments(selectedClientId);
+    }
+  }, [selectedClientId, selectedClientHistory, selectedClientDocs]);
+
+  useEffect(() => {
+    if (!selectedClientId) return;
+    void fetchLatestReport(selectedClientId);
+  }, [selectedClientId]);
+
+  useEffect(() => {
     setReportError(null);
   }, [selectedClientId]);
+
+  useEffect(() => {
+    if (!selectedClientId) {
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(clientReports, selectedClientId)) {
+      return;
+    }
+    let cancelled = false;
+    setReportLoading(true);
+    setReportError(null);
+    fetchLatestReport(selectedClientId)
+      .catch((fetchError) => {
+        if (cancelled) {
+          return;
+        }
+        console.error(fetchError);
+        setReportError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Kan rapport niet ophalen."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setReportLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClientId, clientReports]);
 
   useEffect(() => {
     if (!selectedClient || isClientDialogOpen) {
@@ -483,26 +531,28 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }
 
   async function fetchLatestReport(clientId: string) {
-    try {
-      const response = await fetch(`/api/clients/${clientId}/report?limit=1`);
-      if (!response.ok) {
-        throw new Error("Kan rapport niet ophalen.");
-      }
-      const data = await response.json();
-      const latest = Array.isArray(data.reports) ? data.reports[0] : null;
-      if (latest && typeof latest.content === "string") {
-        setClientReport({
-          content: latest.content,
-          createdAt:
-            typeof latest.createdAt === "string" ? latest.createdAt : null,
-          id: latest.id,
-        });
-      } else {
-        setClientReport(null);
-      }
-    } catch (fetchError) {
-      console.error(fetchError);
+    const response = await fetch(`/api/clients/${clientId}/report?limit=1`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        typeof data.error === "string"
+          ? data.error
+          : "Kan rapport niet ophalen."
+      );
     }
+    const latest = Array.isArray(data.reports) ? data.reports[0] : null;
+    setClientReports((prev) => ({
+      ...prev,
+      [clientId]:
+        latest && typeof latest.content === "string"
+          ? {
+              content: latest.content,
+              createdAt:
+                typeof latest.createdAt === "string" ? latest.createdAt : null,
+              id: typeof latest.id === "string" ? latest.id : undefined,
+            }
+          : null,
+    }));
   }
 
   const fetchCoachPrompt = useCallback(async () => {
@@ -655,6 +705,18 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   useEffect(() => {
     void fetchFeedbackList();
   }, [fetchFeedbackList]);
+
+  const scrollToBottom = useCallback(
+    (ref: React.RefObject<HTMLDivElement | null>) => {
+      if (ref.current) {
+        ref.current.scrollTo({
+          top: ref.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    },
+    []
+  );
 
   async function handleCoachSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1080,14 +1142,17 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       if (!response.ok) {
         throw new Error(data.error ?? "Rapport genereren is mislukt.");
       }
-      setClientReport({
-        content: typeof data.report === "string" ? data.report : "",
-        createdAt:
-          typeof data.createdAt === "string"
-            ? data.createdAt
-            : new Date().toISOString(),
-        id: typeof data.reportId === "string" ? data.reportId : undefined,
-      });
+      setClientReports((prev) => ({
+        ...prev,
+        [selectedClientId]: {
+          content: typeof data.report === "string" ? data.report : "",
+          createdAt:
+            typeof data.createdAt === "string"
+              ? data.createdAt
+              : new Date().toISOString(),
+          id: typeof data.reportId === "string" ? data.reportId : undefined,
+        },
+      }));
     } catch (generateError) {
       setReportError(
         generateError instanceof Error
@@ -1096,6 +1161,26 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       );
     } finally {
       setReportGenerating(false);
+    }
+  }
+
+  async function handleRefreshReport() {
+    if (!selectedClientId || isReportLoading) {
+      return;
+    }
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      await fetchLatestReport(selectedClientId);
+    } catch (refreshError) {
+      console.error(refreshError);
+      setReportError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : "Kan rapport niet ophalen."
+      );
+    } finally {
+      setReportLoading(false);
     }
   }
 
@@ -1481,18 +1566,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const coachMessagesRef = useRef<HTMLDivElement | null>(null);
   const overseerMessagesRef = useRef<HTMLDivElement | null>(null);
 
-  const scrollToBottom = useCallback(
-    (ref: React.RefObject<HTMLDivElement | null>) => {
-      if (ref.current) {
-        ref.current.scrollTo({
-          top: ref.current.scrollHeight,
-          behavior: "smooth",
-        });
-      }
-    },
-    []
-  );
-
   useEffect(() => {
     if (activeChannel === "coach") {
       scrollToBottom(coachMessagesRef);
@@ -1818,6 +1891,18 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRefreshReport}
+                  disabled={!selectedClientId || isReportLoading}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {isReportLoading
+                    ? "Laden..."
+                    : clientReport?.content
+                      ? "Ververs"
+                      : "Laad"}
+                </button>
                 {clientReport?.content && (
                   <button
                     type="button"
@@ -1847,9 +1932,11 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               </p>
             )}
             <div className="mt-3 min-h-[90px] rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[13px] text-slate-700 whitespace-pre-wrap">
-              {clientReport?.content
-                ? clientReport.content
-                : "Nog geen rapport gegenereerd."}
+              {isReportLoading
+                ? "Rapport wordt geladen..."
+                : clientReport?.content
+                  ? clientReport.content
+                  : "Nog geen rapport geladen. Gebruik de laad- of genereerknop om een rapport te tonen."}
             </div>
           </div>
           <div className="rounded-3xl bg-white p-4">
@@ -2159,7 +2246,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             : "text-[#242424]",
                         ].join(" ")}
                       >
-                        <div className="size-7 rounded-full overflow-hidden bg-[#242424] ring-1 ring-slate-200/70 flex items-center justify-center">
+                        <div className="size-7 rounded-full overflow-hidden bg-white ring-1 ring-slate-200/70 flex items-center justify-center">
                           {client.avatarUrl ? (
                             <Image
                               src={client.avatarUrl}
@@ -2170,7 +2257,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                               unoptimized
                             />
                           ) : (
-                            <UserRound className="size-4 text-white" />
+                            <UserRound className="size-4 text-black" />
                           )}
                         </div>
 
@@ -2926,7 +3013,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                     bg-white/25
                     backdrop-blur-2xl backdrop-saturate-120
                     p-0 md:p-4
-                    pt-0!
+                    py-0!
                     text-sm text-slate-800
                   "
                 >
@@ -3040,14 +3127,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                         className={`flex-1 rounded-3xl leading-relaxed ${
                                           isAi
                                             ? "bg-white rounded-tl-md p-5 text-slate-900"
-                                            : "bg-[#222222] rounded-tr-md p-4 text-white"
+                                            : "bg-white rounded-tr-md p-4 text-slate-900"
                                         }`}
                                       >
                                         <p
                                           className={`text-[11px] font-semibold uppercase tracking-wide ${
                                             isAi
                                               ? "text-[#222222]"
-                                              : "text-slate-200"
+                                              : "text-slate-900"
                                           }`}
                                         >
                                           {senderName}
@@ -3097,6 +3184,26 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                 onChange={(event) =>
                                   setCoachInput(event.target.value)
                                 }
+                                onKeyDown={(event) => {
+                                  if (event.key !== "Enter" || event.shiftKey) {
+                                    return;
+                                  }
+                                  if (
+                                    (event.nativeEvent as KeyboardEvent)
+                                      .isComposing
+                                  ) {
+                                    return;
+                                  }
+                                  if (
+                                    !selectedClientId ||
+                                    isCoachLoading ||
+                                    !coachInput.trim().length
+                                  ) {
+                                    return;
+                                  }
+                                  event.preventDefault();
+                                  event.currentTarget.form?.requestSubmit();
+                                }}
                                 placeholder="Schrijf een bericht..."
                                 className="h-30 w-full resize-none rounded-lg border border-transparent p-3 text-sm text-slate-900 focus:outline-none"
                                 rows={3}
@@ -3223,6 +3330,25 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                 onChange={(event) =>
                                   setOverseerInput(event.target.value)
                                 }
+                                onKeyDown={(event) => {
+                                  if (event.key !== "Enter" || event.shiftKey) {
+                                    return;
+                                  }
+                                  if (
+                                    (event.nativeEvent as KeyboardEvent)
+                                      .isComposing
+                                  ) {
+                                    return;
+                                  }
+                                  if (
+                                    isOverseerLoading ||
+                                    !overseerInput.trim().length
+                                  ) {
+                                    return;
+                                  }
+                                  event.preventDefault();
+                                  event.currentTarget.form?.requestSubmit();
+                                }}
                                 placeholder="Vraag naar trends, risico's..."
                                 disabled={isOverseerLoading}
                                 className="h-24 w-full resize-none rounded-lg border border-transparent bg-slate-50 p-3 text-sm text-slate-900 focus:border-purple-200 focus:outline-none"
