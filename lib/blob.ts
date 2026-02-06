@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { put } from "@vercel/blob";
+import { put, del } from "@vercel/blob";
 
 const BLOB_RW_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
@@ -35,6 +35,13 @@ export async function uploadToBlob(
     pathname: blob.pathname,
     contentType: blob.contentType,
   };
+}
+
+export async function deleteFromBlob(urls: string | string[]): Promise<void> {
+  if (!BLOB_RW_TOKEN) {
+    throw new Error("Missing BLOB_READ_WRITE_TOKEN environment variable.");
+  }
+  await del(urls, { token: BLOB_RW_TOKEN });
 }
 
 async function ensureBuffer(input: ArrayBuffer | Uint8Array | Blob | Buffer) {

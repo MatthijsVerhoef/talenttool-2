@@ -45,6 +45,10 @@ export interface ClientDocument {
   content?: string | null;
 }
 
+export interface ClientDocumentWithClient extends ClientDocument {
+  clientId: string;
+}
+
 export interface ClientReport {
   id: string;
   content: string;
@@ -510,6 +514,37 @@ export async function createClientDocument(input: {
   });
 
   return mapDocument(document);
+}
+
+export async function getClientDocumentById(
+  documentId: string,
+): Promise<ClientDocumentWithClient | null> {
+  const document = await prisma.clientDocument.findUnique({
+    where: { id: documentId },
+  });
+  if (!document) {
+    return null;
+  }
+  return mapDocumentWithClient(document);
+}
+
+export async function deleteClientDocumentById(
+  documentId: string,
+): Promise<ClientDocumentWithClient | null> {
+  try {
+    const document = await prisma.clientDocument.delete({
+      where: { id: documentId },
+    });
+    return mapDocumentWithClient(document);
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function getDocumentSnippets(
@@ -1039,6 +1074,7 @@ function mapDocument(document: {
   kind: DocumentKind;
   audioDuration: number | null;
   content: string | null;
+  clientId?: string;
 }): ClientDocument {
   return {
     id: document.id,
@@ -1050,5 +1086,14 @@ function mapDocument(document: {
     audioDuration: document.audioDuration,
     createdAt: document.createdAt.toISOString(),
     content: document.content,
+  };
+}
+
+function mapDocumentWithClient(
+  document: Prisma.ClientDocument,
+): ClientDocumentWithClient {
+  return {
+    ...mapDocument(document),
+    clientId: document.clientId,
   };
 }

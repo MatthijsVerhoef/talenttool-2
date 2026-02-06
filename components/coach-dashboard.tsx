@@ -16,6 +16,7 @@ import {
   LogOut,
   MessageSquare,
   Paperclip,
+  Download,
   Settings,
   UserRound,
   Plus,
@@ -27,6 +28,7 @@ import {
   ShieldCheck,
   Trash2,
   Loader2,
+  FileText,
 } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 
@@ -103,6 +105,21 @@ function getInitials(name?: string | null) {
   return (first + last).toUpperCase();
 }
 
+function formatFileSize(bytes?: number | null) {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
 function cleanMessageContent(content: string) {
   return content
     .replace(/\[AI-[^\]]*\]\s*/gi, "")
@@ -158,6 +175,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [isCoachLoading, setCoachLoading] = useState(false);
   const [isOverseerLoading, setOverseerLoading] = useState(false);
   const [isDocUploading, setDocUploading] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
+    null
+  );
   const [clientReports, setClientReports] = useState<
     Record<
       string,
@@ -1247,6 +1267,43 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     event.target.value = "";
   };
 
+  async function handleDocumentDelete(documentId: string) {
+    if (!selectedClientId || !documentId || deletingDocumentId === documentId) {
+      return;
+    }
+    setDeletingDocumentId(documentId);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/clients/${selectedClientId}/documents/${documentId}`,
+        {
+          method: "DELETE",
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Document verwijderen is mislukt.");
+      }
+      setClientDocuments((prev) => ({
+        ...prev,
+        [selectedClientId]: Array.isArray(data.documents)
+          ? data.documents
+          : (prev[selectedClientId] ?? []).filter(
+              (doc) => doc.id !== documentId
+            ),
+      }));
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(
+        (deleteError as Error).message ?? "Document verwijderen is mislukt."
+      );
+    } finally {
+      setDeletingDocumentId((current) =>
+        current === documentId ? null : current
+      );
+    }
+  }
+
   async function handleGenerateReport() {
     if (!selectedClientId || isReportGenerating) {
       return;
@@ -2087,6 +2144,78 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 ? clientReport.content
                 : "Nog geen rapport geladen. Gebruik de laad- of genereerknop om een rapport te tonen."}
             </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  Documenten
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {documents.length > 0
+                    ? `${documents.length} bestanden`
+                    : "Geen bestanden"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAttachmentButtonClick}
+                className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800"
+              >
+                Upload
+              </button>
+            </div>
+
+            {/* Empty state */}
+            {documents.length === 0 ? (
+              <p className="text-[13px] text-slate-500">
+                Nog geen documenten geüpload.
+              </p>
+            ) : (
+              /* File list */
+              <ul className="divide-y divide-slate-100">
+                {documents.map((doc) => (
+                  <li
+                    key={doc.id}
+                    className="flex items-center justify-between py-2"
+                  >
+                    {/* Left */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <FileText className="size-3.5 min-w-3.5 text-primary" />
+                      <p className="truncate text-[12px] text-slate-800">
+                        {doc.originalName}
+                      </p>
+                    </div>
+
+                    {/* Right */}
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <a
+                        href={doc.storedName}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-slate-500 hover:text-slate-700"
+                      >
+                        Open
+                      </a>
+                      <span className="text-slate-300">·</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDocumentDelete(doc.id)}
+                        disabled={deletingDocumentId === doc.id}
+                        className="text-rose-500 hover:text-rose-600 disabled:opacity-50"
+                      >
+                        {deletingDocumentId === doc.id
+                          ? "Verwijderen..."
+                          : "Verwijder"}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="rounded-3xl bg-white p-4">
