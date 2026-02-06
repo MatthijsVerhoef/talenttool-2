@@ -188,14 +188,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       }[]
     >
   >({});
-  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const clientReportList = selectedClientId
     ? clientReports[selectedClientId] ?? []
     : [];
-  const clientReport =
-    clientReportList.find((report) => report.id === selectedReportId) ??
-    clientReportList[0] ??
-    null;
   const [isReportGenerating, setReportGenerating] = useState(false);
   const [isReportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -463,23 +458,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
   useEffect(() => {
     if (!selectedClientId) {
-      setSelectedReportId(null);
-      return;
-    }
-    const reports = clientReports[selectedClientId];
-    if (!reports || reports.length === 0) {
-      setSelectedReportId(null);
-      return;
-    }
-    setSelectedReportId((current) =>
-      current && reports.some((report) => report.id === current)
-        ? current
-        : reports[0]?.id ?? null
-    );
-  }, [selectedClientId, clientReports]);
-
-  useEffect(() => {
-    if (!selectedClientId) {
       return;
     }
     if (Object.prototype.hasOwnProperty.call(clientReports, selectedClientId)) {
@@ -604,35 +582,31 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               createdAt?: unknown;
             } => Boolean(entry)
           )
-          .map((entry: { id?: unknown; content?: unknown; createdAt?: unknown }) => {
-            const parsedId =
-              typeof entry.id === "string"
-                ? entry.id
-                : typeof window !== "undefined" && window.crypto?.randomUUID
-                ? window.crypto.randomUUID()
-                : Math.random().toString(36).slice(2);
-            return {
-              id: parsedId,
-              content: typeof entry.content === "string" ? entry.content : "",
-              createdAt:
-                typeof entry.createdAt === "string" ? entry.createdAt : null,
-            };
-          })
+          .map(
+            (entry: {
+              id?: unknown;
+              content?: unknown;
+              createdAt?: unknown;
+            }) => {
+              const parsedId =
+                typeof entry.id === "string"
+                  ? entry.id
+                  : typeof window !== "undefined" && window.crypto?.randomUUID
+                  ? window.crypto.randomUUID()
+                  : Math.random().toString(36).slice(2);
+              return {
+                id: parsedId,
+                content: typeof entry.content === "string" ? entry.content : "",
+                createdAt:
+                  typeof entry.createdAt === "string" ? entry.createdAt : null,
+              };
+            }
+          )
       : [];
     setClientReports((prev) => ({
       ...prev,
       [clientId]: reports,
     }));
-    if (clientId === selectedClientId) {
-      setSelectedReportId((current) =>
-        current &&
-        reports.some(
-          (report: { id: string }) => typeof report.id === "string" && report.id === current
-        )
-          ? current
-          : reports[0]?.id ?? null
-      );
-    }
   }
 
   const fetchCoachPrompt = useCallback(async () => {
@@ -1339,7 +1313,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         ...prev,
         [selectedClientId]: [newReport, ...(prev[selectedClientId] ?? [])],
       }));
-      setSelectedReportId(newReport.id);
     } catch (generateError) {
       setReportError(
         generateError instanceof Error
@@ -1371,25 +1344,26 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
   }
 
-  function handleDownloadReport() {
-    if (!clientReport?.content) return;
-    const blob = new Blob([clientReport.content], {
+  function handleOpenReport(report?: {
+    id: string;
+    content: string;
+    createdAt: string | null;
+  }) {
+    if (typeof window === "undefined" || !report?.content) {
+      return;
+    }
+    const blob = new Blob([report.content], {
       type: "text/plain;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    const timestamp = clientReport.createdAt
-      ? new Date(clientReport.createdAt)
-      : new Date();
-    const filename = `${selectedClient?.name ?? "rapport"}-${timestamp
-      .toISOString()
-      .slice(0, 10)}.txt`;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const viewer = window.open(url, "_blank", "noopener,noreferrer");
+    if (!viewer) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60_000);
   }
 
   async function handleSignOut() {
@@ -2066,29 +2040,21 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             )}
           </div>
           <div className="rounded-3xl bg-white p-5 space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Rapportversies
+                  Rapporten
                 </p>
               </div>
-
-              {/* Primary actions */}
               <div className="flex items-center gap-2">
-                <button
+                {/* <button
                   type="button"
                   onClick={handleRefreshReport}
                   disabled={!selectedClientId || isReportLoading}
                   className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  {isReportLoading
-                    ? "Laden..."
-                    : clientReport?.content
-                    ? "Ververs"
-                    : "Laad"}
-                </button>
-
+                  {isReportLoading ? "Laden..." : "Ververs"}
+                </button> */}
                 <button
                   type="button"
                   onClick={handleGenerateReport}
@@ -2099,54 +2065,52 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 </button>
               </div>
             </div>
-
-            {/* Version selector + secondary action */}
-            {clientReportList.length > 1 && (
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                  <span>Versie</span>
-                  <select
-                    value={selectedReportId ?? clientReport?.id ?? ""}
-                    onChange={(e) =>
-                      setSelectedReportId(e.target.value || null)
-                    }
-                    className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] focus:border-slate-400 focus:outline-none"
-                  >
-                    {clientReportList.map((report) => (
-                      <option key={report.id} value={report.id}>
-                        {report.createdAt
-                          ? new Date(report.createdAt).toLocaleString()
-                          : "Onbekende versie"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {clientReport?.content && (
-                  <button
-                    type="button"
-                    onClick={handleDownloadReport}
-                    className="rounded-full border border-slate-200 px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-50"
-                  >
-                    Download
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Error */}
             {reportError && (
               <p className="text-[12px] text-red-500">{reportError}</p>
             )}
-
-            {/* Content */}
-            <div className="min-h-[100px] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700 whitespace-pre-wrap">
-              {isReportLoading
-                ? "Rapport wordt geladen..."
-                : clientReport?.content
-                ? clientReport.content
-                : "Nog geen rapport geladen. Gebruik de laad- of genereerknop om een rapport te tonen."}
-            </div>
+            {clientReportList.length === 0 ? (
+              <p className="text-[13px] text-slate-500">
+                {isReportLoading
+                  ? "Rapporten worden geladen..."
+                  : "Nog geen rapporten beschikbaar."}
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {clientReportList.map((report) => {
+                  const createdDate = report.createdAt
+                    ? new Date(report.createdAt)
+                    : null;
+                  const label = createdDate
+                    ? createdDate.toLocaleString()
+                    : "Onbekende versie";
+                  return (
+                    <li
+                      key={report.id}
+                      className="flex items-center justify-between gap-3 py-2"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText className="size-3.5 min-w-3.5 text-primary" />
+                        <div className="min-w-0">
+                          <p className="truncate text-[12px] text-slate-800">
+                            {label}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            {report.content ? "Beschikbaar" : "Leeg rapport"}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReport(report)}
+                        className="text-[11px] text-slate-500 hover:text-slate-700"
+                      >
+                        Open
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           <div className="rounded-3xl bg-white p-5 space-y-4">
