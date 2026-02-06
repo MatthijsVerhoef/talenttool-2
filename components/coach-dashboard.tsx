@@ -164,13 +164,18 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       {
         content: string;
         createdAt: string | null;
-        id?: string;
-      } | null
+        id: string;
+      }[]
     >
   >({});
-  const clientReport = selectedClientId
-    ? clientReports[selectedClientId] ?? null
-    : null;
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const clientReportList = selectedClientId
+    ? clientReports[selectedClientId] ?? []
+    : [];
+  const clientReport =
+    clientReportList.find((report) => report.id === selectedReportId) ??
+    clientReportList[0] ??
+    null;
   const [isReportGenerating, setReportGenerating] = useState(false);
   const [isReportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -429,12 +434,29 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
   useEffect(() => {
     if (!selectedClientId) return;
-    void fetchLatestReport(selectedClientId);
+    void fetchClientReports(selectedClientId);
   }, [selectedClientId]);
 
   useEffect(() => {
     setReportError(null);
   }, [selectedClientId]);
+
+  useEffect(() => {
+    if (!selectedClientId) {
+      setSelectedReportId(null);
+      return;
+    }
+    const reports = clientReports[selectedClientId];
+    if (!reports || reports.length === 0) {
+      setSelectedReportId(null);
+      return;
+    }
+    setSelectedReportId((current) =>
+      current && reports.some((report) => report.id === current)
+        ? current
+        : reports[0]?.id ?? null
+    );
+  }, [selectedClientId, clientReports]);
 
   useEffect(() => {
     if (!selectedClientId) {
@@ -446,7 +468,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     let cancelled = false;
     setReportLoading(true);
     setReportError(null);
-    fetchLatestReport(selectedClientId)
+    void fetchClientReports(selectedClientId)
       .catch((fetchError) => {
         if (cancelled) {
           return;
@@ -538,8 +560,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
   }
 
-  async function fetchLatestReport(clientId: string) {
-    const response = await fetch(`/api/clients/${clientId}/report?limit=1`);
+  async function fetchClientReports(clientId: string) {
+    const response = await fetch(`/api/clients/${clientId}/report?limit=5`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(
@@ -548,19 +570,46 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           : "Kan rapport niet ophalen."
       );
     }
-    const latest = Array.isArray(data.reports) ? data.reports[0] : null;
+    const reports = Array.isArray(data.reports)
+      ? data.reports
+          .map((entry) =>
+            typeof entry === "object" && entry !== null ? entry : null
+          )
+          .filter(
+            (
+              entry
+            ): entry is {
+              id?: unknown;
+              content?: unknown;
+              createdAt?: unknown;
+            } => Boolean(entry)
+          )
+          .map((entry) => {
+            const parsedId =
+              typeof entry.id === "string"
+                ? entry.id
+                : typeof window !== "undefined" && window.crypto?.randomUUID
+                ? window.crypto.randomUUID()
+                : Math.random().toString(36).slice(2);
+            return {
+              id: parsedId,
+              content: typeof entry.content === "string" ? entry.content : "",
+              createdAt:
+                typeof entry.createdAt === "string" ? entry.createdAt : null,
+            };
+          })
+      : [];
     setClientReports((prev) => ({
       ...prev,
-      [clientId]:
-        latest && typeof latest.content === "string"
-          ? {
-              content: latest.content,
-              createdAt:
-                typeof latest.createdAt === "string" ? latest.createdAt : null,
-              id: typeof latest.id === "string" ? latest.id : undefined,
-            }
-          : null,
+      [clientId]: reports,
     }));
+    if (clientId === selectedClientId) {
+      setSelectedReportId((current) =>
+        current && reports.some((report) => report.id === current)
+          ? current
+          : reports[0]?.id ?? null
+      );
+    }
   }
 
   const fetchCoachPrompt = useCallback(async () => {
@@ -1212,17 +1261,25 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       if (!response.ok) {
         throw new Error(data.error ?? "Rapport genereren is mislukt.");
       }
+      const generatedId =
+        typeof data.reportId === "string"
+          ? data.reportId
+          : typeof window !== "undefined" && window.crypto?.randomUUID
+          ? window.crypto.randomUUID()
+          : Math.random().toString(36).slice(2);
+      const newReport = {
+        content: typeof data.report === "string" ? data.report : "",
+        createdAt:
+          typeof data.createdAt === "string"
+            ? data.createdAt
+            : new Date().toISOString(),
+        id: generatedId,
+      };
       setClientReports((prev) => ({
         ...prev,
-        [selectedClientId]: {
-          content: typeof data.report === "string" ? data.report : "",
-          createdAt:
-            typeof data.createdAt === "string"
-              ? data.createdAt
-              : new Date().toISOString(),
-          id: typeof data.reportId === "string" ? data.reportId : undefined,
-        },
+        [selectedClientId]: [newReport, ...(prev[selectedClientId] ?? [])],
       }));
+      setSelectedReportId(newReport.id);
     } catch (generateError) {
       setReportError(
         generateError instanceof Error
@@ -1241,7 +1298,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     setReportLoading(true);
     setReportError(null);
     try {
-      await fetchLatestReport(selectedClientId);
+      await fetchClientReports(selectedClientId);
     } catch (refreshError) {
       console.error(refreshError);
       setReportError(
@@ -1948,24 +2005,22 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               </Dialog>
             )}
           </div>
-          <div className="rounded-3xl bg-white p-4">
-            <div className="flex items-center justify-between">
+          <div className="rounded-3xl bg-white p-5 space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-foreground font-semibold">
-                  Laatste rapport
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  Rapportversies
                 </p>
-                {clientReport?.createdAt && (
-                  <p className="text-[11px] text-slate-500">
-                    {new Date(clientReport.createdAt).toLocaleString()}
-                  </p>
-                )}
               </div>
+
+              {/* Primary actions */}
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleRefreshReport}
                   disabled={!selectedClientId || isReportLoading}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
                   {isReportLoading
                     ? "Laden..."
@@ -1973,6 +2028,40 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                     ? "Ververs"
                     : "Laad"}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateReport}
+                  disabled={!selectedClientId || isReportGenerating}
+                  className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {isReportGenerating ? "Bezig..." : "Genereer"}
+                </button>
+              </div>
+            </div>
+
+            {/* Version selector + secondary action */}
+            {clientReportList.length > 1 && (
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                  <span>Versie</span>
+                  <select
+                    value={selectedReportId ?? clientReport?.id ?? ""}
+                    onChange={(e) =>
+                      setSelectedReportId(e.target.value || null)
+                    }
+                    className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] focus:border-slate-400 focus:outline-none"
+                  >
+                    {clientReportList.map((report) => (
+                      <option key={report.id} value={report.id}>
+                        {report.createdAt
+                          ? new Date(report.createdAt).toLocaleString()
+                          : "Onbekende versie"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {clientReport?.content && (
                   <button
                     type="button"
@@ -1982,26 +2071,16 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                     Download
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={handleGenerateReport}
-                  disabled={!selectedClientId || isReportGenerating}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {isReportGenerating ? "Bezig..." : "Genereer"}
-                </button>
               </div>
-            </div>
+            )}
+
+            {/* Error */}
             {reportError && (
-              <p className="mt-2 text-[12px] text-red-500">{reportError}</p>
+              <p className="text-[12px] text-red-500">{reportError}</p>
             )}
-            {clientReport?.createdAt && (
-              <p className="mt-2 text-[11px] text-slate-500">
-                Laatste rapport:{" "}
-                {new Date(clientReport.createdAt).toLocaleString()}
-              </p>
-            )}
-            <div className="mt-3 min-h-[90px] rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[13px] text-slate-700 whitespace-pre-wrap">
+
+            {/* Content */}
+            <div className="min-h-[100px] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700 whitespace-pre-wrap">
               {isReportLoading
                 ? "Rapport wordt geladen..."
                 : clientReport?.content
@@ -2009,6 +2088,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 : "Nog geen rapport geladen. Gebruik de laad- of genereerknop om een rapport te tonen."}
             </div>
           </div>
+
           <div className="rounded-3xl bg-white p-4">
             <p className="text-[11px] uppercase tracking-wide text-foreground font-semibold">
               Sterktes & aandacht

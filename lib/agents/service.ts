@@ -13,6 +13,7 @@ import {
   getClient,
   getCoachPrompt,
   getDocumentSnippets,
+  getLatestClientReport,
   getOverseerPrompt,
   getOverseerThread,
   getReportPrompt,
@@ -162,6 +163,7 @@ export async function generateClientReport(clientId: string): Promise<AgentReply
 
   const history = (await getSessionWindow(clientId, 80)) ?? [];
   const documentSnippets = await getDocumentSnippets(clientId);
+  const previousReport = await getLatestClientReport(clientId);
   const { coachModel } = await getAIModelSettings();
   const storedReportPrompt = await getReportPrompt();
   const baseReportPrompt = storedReportPrompt?.content ?? DEFAULT_REPORT_ROLE_PROMPT;
@@ -170,18 +172,52 @@ export async function generateClientReport(clientId: string): Promise<AgentReply
   const docSummary = documentSnippets.length
     ? `Samenvatting documenten:\n${documentSnippets.join("\n\n")}`
     : "";
+  const versioningGuidance = previousReport
+    ? "Je werkt met een bestaand rapport. Houd vast wat nog klopt, maar benadruk nieuwe inzichten en voortgang. Noteer duidelijk wat er veranderd is ten opzichte van de vorige versie."
+    : "Er is nog geen eerder rapport; schrijf een eerste, warme rapportage op basis van de meest recente informatie.";
 
   const systemPrompt = [
     baseReportPrompt,
+    versioningGuidance,
     `Cliënt: ${client.name}. Focus: ${client.focusArea}. Doelen: ${goals}.`,
     docSummary,
   ]
     .filter(Boolean)
     .join("\n\n");
 
-  const conversation = history
-    .map((message) => formatMessageForAgent(message))
-    .join("\n\n");
+  const conversation = history.map((message) => formatMessageForAgent(message)).join("\n\n");
+  const previousReportDate =
+    previousReport?.createdAt && !Number.isNaN(Date.parse(previousReport.createdAt))
+      ? new Date(previousReport.createdAt).toLocaleDateString("nl-NL", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : previousReport?.createdAt ?? "";
+
+  const userContentSegments: string[] = [];
+
+  if (previousReport) {
+    userContentSegments.push(
+      [
+        `Vorige rapport (${previousReportDate || "onbekende datum"}):`,
+        previousReport.content,
+        "Werk dit rapport bij met de nieuwste context en benoem wat er is bijgekomen of veranderd.",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    );
+  }
+
+  if (conversation) {
+    userContentSegments.push(conversation);
+  }
+
+  if (userContentSegments.length === 0) {
+    userContentSegments.push(
+      "Er zijn nog geen gesprekken gevoerd. Maak een kort rapport met een vriendelijke introductie en herinnering om doelen te stellen.",
+    );
+  }
 
   const completion = await runAgentCompletion({
     model: coachModel,
@@ -189,9 +225,7 @@ export async function generateClientReport(clientId: string): Promise<AgentReply
       { role: "system", content: systemPrompt },
       {
         role: "user",
-        content:
-          conversation ||
-          "Er zijn nog geen gesprekken gevoerd. Maak een kort rapport met een vriendelijke introductie en herinnering om doelen te stellen.",
+        content: userContentSegments.join("\n\n"),
       },
     ],
   });
