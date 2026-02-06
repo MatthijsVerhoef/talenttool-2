@@ -2681,7 +2681,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           {activeSidebarTab === "prompt-center" ? (
             <div className="p-4 h-full">
               <div className="flex h-full rounded-3xl flex-col pt-4 bg-white">
-                <header className="relative z-10 flex rounded-t-3xl pt-4 shrink-0 items-center justify-between border-b border-white/30 px-8 backdrop-blur-xl">
+                <header className="relative z-10 flex rounded-t-3xl py-3 shrink-0 items-center justify-between border-b border-white/30 px-8 backdrop-blur-xl">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Administratie
