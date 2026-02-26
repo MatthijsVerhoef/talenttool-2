@@ -84,7 +84,7 @@ export async function POST(request: Request) {
   if (agentType === AgentKind.COACH) {
     message = await getAgentMessageById(messageId);
   } else {
-    message = await getOverseerMessageById(messageId);
+    message = await getOverseerMessageById(messageId, session.user.id);
   }
 
   if (!message) {

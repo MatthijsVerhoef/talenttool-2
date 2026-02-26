@@ -62,6 +62,8 @@ interface CoachDashboardProps {
 
 type HistoryState = Record<string, AgentMessage[]>;
 type DocumentState = Record<string, ClientDocument[]>;
+type ClientPendingState = Record<string, boolean>;
+type ClientRequestState = Record<string, string | null>;
 type SettingsTab = "profile" | "prompts";
 type ModelOption = {
   value: string;
@@ -95,6 +97,13 @@ interface AiResponseLayerRow {
   position: number;
   isEnabled: boolean;
   createdAt: string;
+}
+
+interface ActiveCoachRequest {
+  requestId: string;
+  controller: AbortController;
+  userTempId: string;
+  assistantTempId: string;
 }
 
 function getInitials(name?: string | null) {
@@ -172,7 +181,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [overseerThread, setOverseerThread] = useState<AgentMessage[]>([]);
   const [coachInput, setCoachInput] = useState("");
   const [overseerInput, setOverseerInput] = useState("");
-  const [isCoachLoading, setCoachLoading] = useState(false);
+  const [coachPendingByClientId, setCoachPendingByClientId] =
+    useState<ClientPendingState>({});
+  const [coachLastRequestIdByClientId, setCoachLastRequestIdByClientId] =
+    useState<ClientRequestState>({});
   const [isOverseerLoading, setOverseerLoading] = useState(false);
   const [isDocUploading, setDocUploading] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
@@ -307,6 +319,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const editClientAvatarInputId = useId();
   const newClientAvatarInputId = useId();
   const userAvatarInputId = useId();
+  const activeCoachRequestsRef = useRef<Record<string, ActiveCoachRequest>>({});
   const isAdmin = displayUser.role === "ADMIN";
   const userInitial = displayUser.name?.charAt(0).toUpperCase() ?? "C";
   const settingsSections = useMemo<
@@ -419,6 +432,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     () => clientList.find((client) => client.id === selectedClientId),
     [clientList, selectedClientId]
   );
+  const clientNameById = useMemo(
+    () =>
+      clientList.reduce<Record<string, string>>((acc, client) => {
+        acc[client.id] = client.name;
+        return acc;
+      }, {}),
+    [clientList]
+  );
   const selectedClientInitials = getInitials(selectedClient?.name);
   const newClientInitials = getInitials(newClientForm.name);
   const isDashboardTab = activeSidebarTab === "dashboard";
@@ -436,6 +457,46 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const selectedClientDocs = selectedClientId
     ? clientDocuments[selectedClientId]
     : undefined;
+  const isSelectedClientCoachPending = selectedClientId
+    ? Boolean(coachPendingByClientId[selectedClientId])
+    : false;
+
+  const clearCoachPendingState = useCallback((clientId: string) => {
+    setCoachPendingByClientId((prev) => {
+      if (!prev[clientId]) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [clientId]: false,
+      };
+    });
+  }, []);
+
+  const removeCoachTempMessages = useCallback(
+    (clientId: string, userTempId: string, assistantTempId: string) => {
+      setClientHistories((prev) => {
+        const prevHistory = prev[clientId] ?? [];
+        return {
+          ...prev,
+          [clientId]: prevHistory.filter(
+            (message) =>
+              message.id !== userTempId && message.id !== assistantTempId
+          ),
+        };
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      const activeRequests = Object.values(activeCoachRequestsRef.current);
+      for (const request of activeRequests) {
+        request.controller.abort();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedClientId) return;
@@ -513,7 +574,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
   async function fetchClientHistory(clientId: string) {
     try {
-      const response = await fetch(`/api/coach/${clientId}`);
+      const response = await fetch(`/api/coach/${clientId}`, {
+        credentials: "include",
+      });
       if (!response.ok) throw new Error("Kan gespreksgeschiedenis niet laden.");
       const data = await response.json();
       setClientHistories((prev) => ({
@@ -804,20 +867,49 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     event.preventDefault();
     if (!selectedClientId || !coachInput.trim()) return;
 
+    const clientId = selectedClientId;
     const trimmedMessage = coachInput.trim();
     const userTempId = `temp-user-${Date.now()}`;
     const assistantTempId = `${userTempId}-assistant`;
     const timestamp = new Date().toISOString();
+    const requestId =
+      typeof window !== "undefined" && window.crypto?.randomUUID
+        ? window.crypto.randomUUID()
+        : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const conversationId = "default";
+    const previousRequest = activeCoachRequestsRef.current[clientId];
+    if (previousRequest) {
+      previousRequest.controller.abort();
+      removeCoachTempMessages(
+        clientId,
+        previousRequest.userTempId,
+        previousRequest.assistantTempId
+      );
+    }
+    const controller = new AbortController();
+    activeCoachRequestsRef.current[clientId] = {
+      requestId,
+      controller,
+      userTempId,
+      assistantTempId,
+    };
 
     setCoachInput("");
-    setCoachLoading(true);
+    setCoachPendingByClientId((prev) => ({
+      ...prev,
+      [clientId]: true,
+    }));
+    setCoachLastRequestIdByClientId((prev) => ({
+      ...prev,
+      [clientId]: requestId,
+    }));
     setError(null);
 
     setClientHistories((prev) => {
-      const prevHistory = prev[selectedClientId] ?? [];
+      const prevHistory = prev[clientId] ?? [];
       return {
         ...prev,
-        [selectedClientId]: [
+        [clientId]: [
           ...prevHistory,
           {
             id: userTempId,
@@ -841,38 +933,72 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     scrollToBottom(coachMessagesRef);
 
     try {
-      const response = await fetch(`/api/coach/${selectedClientId}`, {
+      const response = await fetch(`/api/coach/${clientId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmedMessage }),
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-request-id": requestId,
+          "x-client-id": clientId,
+          "x-conversation-id": conversationId,
+        },
+        body: JSON.stringify({
+          message: trimmedMessage,
+          conversationId,
+        }),
+        signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error("Coach kon niet reageren.");
+      const responseRequestId =
+        response.headers.get("x-request-id") ?? requestId;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const responseError =
+          typeof data.error === "string"
+            ? data.error
+            : "Coach kon niet reageren.";
+        throw new Error(`${responseError} (requestId: ${responseRequestId})`);
+      }
 
-      const data = await response.json();
+      const activeRequest = activeCoachRequestsRef.current[clientId];
+      if (activeRequest?.requestId !== requestId) {
+        return;
+      }
       setClientHistories((prev) => ({
         ...prev,
-        [selectedClientId]: data.history ?? [],
+        [clientId]: data.history ?? [],
       }));
       scrollToBottom(coachMessagesRef);
     } catch (sendError) {
-      console.error(sendError);
-      setClientHistories((prev) => {
-        const prevHistory = prev[selectedClientId] ?? [];
-        return {
-          ...prev,
-          [selectedClientId]: prevHistory.filter(
-            (message) =>
-              message.id !== userTempId && message.id !== assistantTempId
-          ),
-        };
-      });
-      setCoachInput(trimmedMessage);
-      setError(
-        (sendError as Error).message ?? "Contact met de coach is mislukt."
-      );
+      const activeRequest = activeCoachRequestsRef.current[clientId];
+      if (activeRequest?.requestId !== requestId) {
+        return;
+      }
+
+      const isAbortError =
+        sendError instanceof Error && sendError.name === "AbortError";
+      if (!isAbortError) {
+        console.error(sendError);
+        removeCoachTempMessages(clientId, userTempId, assistantTempId);
+        if (selectedClientId === clientId) {
+          setCoachInput(trimmedMessage);
+        }
+        const message =
+          sendError instanceof Error
+            ? sendError.message
+            : "Contact met de coach is mislukt.";
+        const errorWithRequestId = message.includes("requestId:")
+          ? message
+          : `${message} (requestId: ${requestId})`;
+        setError(errorWithRequestId);
+      }
     } finally {
-      setCoachLoading(false);
+      const activeRequest = activeCoachRequestsRef.current[clientId];
+      if (activeRequest?.requestId !== requestId) {
+        return;
+      }
+      delete activeCoachRequestsRef.current[clientId];
+      clearCoachPendingState(clientId);
     }
   }
 
@@ -1173,24 +1299,42 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     event.preventDefault();
     if (!overseerInput.trim()) return;
 
+    const requestId =
+      typeof window !== "undefined" && window.crypto?.randomUUID
+        ? window.crypto.randomUUID()
+        : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const trimmedMessage = overseerInput.trim();
     setOverseerLoading(true);
     setError(null);
     try {
       const response = await fetch(`/api/overseer`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: overseerInput }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-request-id": requestId,
+        },
+        body: JSON.stringify({
+          message: trimmedMessage,
+          clientId: selectedClientId ?? undefined,
+        }),
       });
-      if (!response.ok) throw new Error("Overzichtscoach kon niet reageren.");
-      const data = await response.json();
+      const responseRequestId =
+        response.headers.get("x-request-id") ?? requestId;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const errorMessage =
+          typeof data.error === "string"
+            ? data.error
+            : "Overseer (your coaching supervisor) kon niet reageren.";
+        throw new Error(`${errorMessage} (requestId: ${responseRequestId})`);
+      }
       setOverseerThread(data.thread ?? []);
       setOverseerInput("");
       scrollToBottom(overseerMessagesRef);
     } catch (sendError) {
       console.error(sendError);
       setError(
-        (sendError as Error).message ??
-          "Contact met de overzichtscoach is mislukt."
+        (sendError as Error).message ?? "Contact met overseer is mislukt."
       );
     } finally {
       setOverseerLoading(false);
@@ -1773,7 +1917,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   : "hover:text-slate-900"
               }`}
             >
-              Meta twin
+              Overseer (privé)
             </button>
           )}
         </div>
@@ -3468,6 +3612,26 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                               })
                             )}
                           </div>
+                          {process.env.NODE_ENV !== "production" && (
+                            <div className="px-3 md:px-4 pb-2 text-[11px] text-slate-500">
+                              <p className="font-semibold text-slate-600">
+                                Debug chat requests
+                              </p>
+                              <div className="mt-1 space-y-1">
+                                {clientList.map((client) => (
+                                  <p key={`debug-${client.id}`}>
+                                    {client.name}: pending=
+                                    {coachPendingByClientId[client.id]
+                                      ? "yes"
+                                      : "no"}
+                                    , requestId=
+                                    {coachLastRequestIdByClientId[client.id] ??
+                                      "-"}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <form
                             onSubmit={handleCoachSubmit}
                             className="px-3 md:px-4 pb-4"
@@ -3490,7 +3654,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                   }
                                   if (
                                     !selectedClientId ||
-                                    isCoachLoading ||
+                                    isSelectedClientCoachPending ||
                                     !coachInput.trim().length
                                   ) {
                                     return;
@@ -3503,16 +3667,19 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                 rows={3}
                               />
                               <div className="mt-2 flex items-center justify-between text-xs">
-                                <button
+                                {/* <button
                                   type="button"
                                   onClick={handleAttachmentButtonClick}
                                   className="inline-flex items-center gap-1 absolute bottom-2 mr-2 bg-white aspect-square right-12 rounded-full border border-slate-200 px-3 text-slate-600"
                                 >
                                   <Paperclip className="size-3.5" />
-                                </button>
+                                </button> */}
                                 <button
                                   type="submit"
-                                  disabled={!selectedClient || isCoachLoading}
+                                  disabled={
+                                    !selectedClient ||
+                                    isSelectedClientCoachPending
+                                  }
                                   className="inline-flex items-center gap-2  aspect-square rounded-full bg-slate-900 px-3 absolute bottom-2 right-2 text-white disabled:opacity-50"
                                 >
                                   <ArrowUp className="size-4" />
@@ -3535,15 +3702,44 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           >
                             {overseerThread.length === 0 ? (
                               <div className="rounded-xl border border-slate-200 bg-white p-4 text-slate-500">
-                                Vraag de overzichtscoach naar trends en
+                                Overseer (your coaching supervisor) is privé
+                                voor jouw account. Vraag naar trends en
                                 signalen.
                               </div>
                             ) : (
                               overseerThread.map((message) => {
                                 const isAssistant =
                                   message.role === "assistant";
+                                const context =
+                                  message.meta &&
+                                  typeof message.meta === "object" &&
+                                  "context" in message.meta &&
+                                  typeof (
+                                    message.meta as {
+                                      context?: unknown;
+                                    }
+                                  ).context === "object" &&
+                                  (message.meta as { context?: unknown })
+                                    .context !== null
+                                    ? (
+                                        message.meta as {
+                                          context?: {
+                                            clientId?: unknown;
+                                          };
+                                        }
+                                      ).context ?? null
+                                    : null;
+                                const contextClientId =
+                                  context &&
+                                  typeof context.clientId === "string"
+                                    ? context.clientId
+                                    : null;
+                                const contextClientName = contextClientId
+                                  ? clientNameById[contextClientId] ??
+                                    contextClientId
+                                  : null;
                                 const senderName = isAssistant
-                                  ? "Overzichtscoach"
+                                  ? "Overseer (your coaching supervisor)"
                                   : displayUser.name ?? "Jij";
                                 const avatarNode = isAssistant ? (
                                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-50 text-purple-600">
@@ -3588,6 +3784,11 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                         >
                                           {senderName}
                                         </p>
+                                        {contextClientName && (
+                                          <p className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                            Client: {contextClientName}
+                                          </p>
+                                        )}
                                         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
                                           {cleanMessageContent(message.content)}
                                         </p>

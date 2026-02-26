@@ -3,6 +3,11 @@ import type { AgentKind } from "@prisma/client";
 import { runAgentCompletion } from "@/lib/ai/openai";
 import type { ClientProfile } from "@/lib/data/store";
 import { listActiveResponseLayers } from "@/lib/data/store";
+import { logError, logInfo } from "@/lib/observability";
+
+const RESPONSE_LAYER_TIMEOUT_MS = Number(
+  process.env.OPENAI_LAYER_TIMEOUT_MS ?? "15000",
+);
 
 export interface ResponseLayerContext {
   latestUserMessage?: string;
@@ -20,6 +25,7 @@ export async function applyResponseLayers(options: {
   agentType: AgentKind;
   draftReply: string;
   context?: ResponseLayerContext;
+  requestId?: string;
 }): Promise<{ reply: string; layers: AppliedLayerSummary[] }> {
   const layers = await listActiveResponseLayers(options.agentType);
   if (!layers.length || !options.draftReply.trim()) {
@@ -33,18 +39,29 @@ export async function applyResponseLayers(options: {
   const summaries: AppliedLayerSummary[] = [];
 
   for (const layer of layers) {
-    try {
-      const { systemPrompt, userPrompt } = buildLayerPrompts(
-        layer.name,
-        layer.description,
-        layer.instructions,
-        options.context,
-        currentReply,
-      );
+    const { systemPrompt, userPrompt } = buildLayerPrompts(
+      layer.name,
+      layer.description,
+      layer.instructions,
+      options.context,
+      currentReply,
+    );
 
+    logInfo("agent.response-layer.start", {
+      requestId: options.requestId ?? null,
+      layerId: layer.id,
+      layerName: layer.name,
+      model: layer.model,
+      timeoutMs: RESPONSE_LAYER_TIMEOUT_MS,
+    });
+
+    try {
       const completion = await runAgentCompletion({
         model: layer.model,
         temperature: layer.temperature,
+        requestId: options.requestId,
+        operation: `response-layer:${layer.id}`,
+        timeoutMs: RESPONSE_LAYER_TIMEOUT_MS,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -56,9 +73,21 @@ export async function applyResponseLayers(options: {
         currentReply = cleaned;
       }
       summaries.push({ id: layer.id, name: layer.name });
+      logInfo("agent.response-layer.success", {
+        requestId: options.requestId ?? null,
+        layerId: layer.id,
+        layerName: layer.name,
+        responseId: completion.responseId,
+        outputLength: cleaned.length,
+      });
     } catch (error) {
-      console.error(`Response layer "${layer.name}" failed`, error);
-      continue;
+      logError("agent.response-layer.error", {
+        requestId: options.requestId ?? null,
+        layerId: layer.id,
+        layerName: layer.name,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 

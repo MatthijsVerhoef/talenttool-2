@@ -9,21 +9,23 @@ import {
 } from "@/lib/agents/prompts";
 import {
   getAIModelSettings,
+  appendOverseerMessage,
   appendClientMessage,
   getClient,
   getCoachPrompt,
   getDocumentSnippets,
   getLatestClientReport,
+  getOverseerWindow,
   getOverseerPrompt,
-  getOverseerThread,
   getReportPrompt,
   getSessionWindow,
-  listClientDigests,
-  recordOverseerMessage,
+  listClientDigestsForCoach,
+  type OverseerMessageContext,
   saveClientReport,
   type AgentRole,
   type ClientProfile,
 } from "@/lib/data/store";
+import { logError, logInfo, withTimer } from "@/lib/observability";
 
 type ChatRole = "user" | "assistant" | "system";
 
@@ -46,199 +48,366 @@ export interface AgentReply {
   createdAt?: string;
 }
 
+interface AgentRunContext {
+  requestId?: string;
+  userId?: string;
+  conversationId?: string;
+}
+
+interface ScopedAgentRunContext extends AgentRunContext {
+  userId: string;
+}
+
 export async function runCoachAgent(
-  clientId: string,
-  userMessage: string,
+  options: {
+    clientId: string;
+    userMessage: string;
+  } & ScopedAgentRunContext,
 ): Promise<AgentReply> {
-  const client = await getClient(clientId);
-  if (!client) {
-    throw new Error(`Cliënt ${clientId} niet gevonden.`);
-  }
+  const { clientId, userMessage, requestId, userId, conversationId } = options;
 
-  await appendClientMessage(clientId, "user", userMessage, undefined, "HUMAN");
-
-  const history = (await getSessionWindow(clientId)) ?? [];
-  const documentSnippets = await getDocumentSnippets(clientId);
-  const storedPrompt = await getCoachPrompt();
-  const coachPrompt = storedPrompt?.content ?? DEFAULT_COACH_ROLE_PROMPT;
-  const { coachModel } = await getAIModelSettings();
-  const messages = [
-    {
-      role: "system" as const,
-      content: buildCoachSystemPrompt(coachPrompt, client, documentSnippets),
-    },
-    ...history.map((message) => ({
-      role: normalizeRole(message.role),
-      content: formatMessageForAgent(message),
-    })),
-  ];
-
-  const completion = await runAgentCompletion({
-    model: coachModel,
-    messages,
-  });
-
-  const layered = await applyResponseLayers({
-    agentType: AgentKind.COACH,
-    draftReply: completion.outputText,
-    context: {
-      latestUserMessage: userMessage,
-      client,
-      documentSnippets,
-    },
-  });
-
-  await appendClientMessage(
+  logInfo("agent.coach.start", {
+    requestId: requestId ?? null,
+    userId: userId ?? null,
     clientId,
-    "assistant",
-    layered.reply,
-    {
-      responseId: completion.responseId,
-      usage: completion.usage,
-      layers: layered.layers.map((layer) => ({ id: layer.id, name: layer.name })),
-    },
-    "AI",
-  );
-
-  return {
-    reply: layered.reply,
-    responseId: completion.responseId,
-    usage: completion.usage,
-  };
-}
-
-export async function runOverseerAgent(userMessage: string): Promise<AgentReply> {
-  await recordOverseerMessage("user", "HUMAN", userMessage);
-
-  const clientDigests = (await listClientDigests()).join("\n\n");
-  const history = (await getOverseerThread())
-    .filter((message) => message.role !== "system")
-    .map((message) => ({
-      role: normalizeRole(message.role),
-      content: formatMessageForAgent(message),
-    }));
-
-  const storedPrompt = await getOverseerPrompt();
-  const systemPrompt = storedPrompt?.content ?? DEFAULT_OVERSEER_ROLE_PROMPT;
-  const { overseerModel } = await getAIModelSettings();
-
-  const completion = await runAgentCompletion({
-    model: overseerModel,
-    messages: [
-      {
-        role: "system",
-        content: `${systemPrompt}\n\nCliëntoverzichten:\n${clientDigests}`,
-      },
-      ...history,
-    ],
+    conversationId: conversationId ?? null,
+    userMessageLength: userMessage.length,
   });
 
-  const layered = await applyResponseLayers({
-    agentType: AgentKind.OVERSEER,
-    draftReply: completion.outputText,
-    context: {
-      latestUserMessage: userMessage,
-      additionalContext: clientDigests,
-    },
-  });
+  try {
+    const { result, durationMs } = await withTimer(async () => {
+      const client = await getClient(clientId);
+      if (!client) {
+        throw new Error(`Cliënt ${clientId} niet gevonden.`);
+      }
 
-  await recordOverseerMessage("assistant", "AI", layered.reply, {
-    responseId: completion.responseId,
-    usage: completion.usage,
-    layers: layered.layers.map((layer) => ({ id: layer.id, name: layer.name })),
-  });
+      await appendClientMessage(
+        userId,
+        clientId,
+        "user",
+        userMessage,
+        undefined,
+        "HUMAN",
+      );
 
-  return {
-    reply: layered.reply,
-    responseId: completion.responseId,
-    usage: completion.usage,
-  };
-}
+      const history = (await getSessionWindow(userId, clientId)) ?? [];
+      const documentSnippets = await getDocumentSnippets(clientId);
+      const storedPrompt = await getCoachPrompt();
+      const coachPrompt = storedPrompt?.content ?? DEFAULT_COACH_ROLE_PROMPT;
+      const { coachModel } = await getAIModelSettings();
+      const messages = [
+        {
+          role: "system" as const,
+          content: buildCoachSystemPrompt(coachPrompt, client, documentSnippets),
+        },
+        ...history.map((message) => ({
+          role: normalizeRole(message.role),
+          content: formatMessageForAgent(message),
+        })),
+      ];
 
-export async function generateClientReport(clientId: string): Promise<AgentReply> {
-  const client = await getClient(clientId);
-  if (!client) {
-    throw new Error(`Cliënt ${clientId} niet gevonden.`);
+      const completion = await runAgentCompletion({
+        model: coachModel,
+        messages,
+        requestId,
+        operation: "coach",
+      });
+
+      const layered = await applyResponseLayers({
+        agentType: AgentKind.COACH,
+        draftReply: completion.outputText,
+        context: {
+          latestUserMessage: userMessage,
+          client,
+          documentSnippets,
+        },
+        requestId,
+      });
+
+      await appendClientMessage(
+        userId,
+        clientId,
+        "assistant",
+        layered.reply,
+        {
+          responseId: completion.responseId,
+          usage: completion.usage,
+          layers: layered.layers.map((layer) => ({ id: layer.id, name: layer.name })),
+        },
+        "AI",
+      );
+
+      return {
+        reply: layered.reply,
+        responseId: completion.responseId,
+        usage: completion.usage,
+      };
+    });
+
+    logInfo("agent.coach.success", {
+      requestId: requestId ?? null,
+      userId: userId ?? null,
+      clientId,
+      conversationId: conversationId ?? null,
+      durationMs,
+      responseId: result.responseId,
+      replyLength: result.reply.length,
+      totalTokens: result.usage?.totalTokens,
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+    });
+
+    return result;
+  } catch (error) {
+    logError("agent.coach.error", {
+      requestId: requestId ?? null,
+      userId: userId ?? null,
+      clientId,
+      conversationId: conversationId ?? null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
+}
 
-  const history = (await getSessionWindow(clientId, 80)) ?? [];
-  const documentSnippets = await getDocumentSnippets(clientId);
-  const previousReport = await getLatestClientReport(clientId);
-  const { coachModel } = await getAIModelSettings();
-  const storedReportPrompt = await getReportPrompt();
-  const baseReportPrompt = storedReportPrompt?.content ?? DEFAULT_REPORT_ROLE_PROMPT;
+export async function runOverseerAgent(
+  options: {
+    coachUserId: string;
+    userMessage: string;
+    context?: OverseerMessageContext;
+  } & AgentRunContext,
+): Promise<AgentReply> {
+  const { coachUserId, userMessage, requestId, conversationId, context } =
+    options;
 
-  const goals = client.goals.length ? client.goals.join(", ") : "Geen doelen vastgelegd";
-  const docSummary = documentSnippets.length
-    ? `Samenvatting documenten:\n${documentSnippets.join("\n\n")}`
-    : "";
-  const versioningGuidance = previousReport
-    ? "Je werkt met een bestaand rapport. Houd vast wat nog klopt, maar benadruk nieuwe inzichten en voortgang. Noteer duidelijk wat er veranderd is ten opzichte van de vorige versie."
-    : "Er is nog geen eerder rapport; schrijf een eerste, warme rapportage op basis van de meest recente informatie.";
+  logInfo("agent.overseer.start", {
+    requestId: requestId ?? null,
+    userId: coachUserId,
+    coachUserId,
+    conversationId: conversationId ?? null,
+    userMessageLength: userMessage.length,
+  });
 
-  const systemPrompt = [
-    baseReportPrompt,
-    versioningGuidance,
-    `Cliënt: ${client.name}. Focus: ${client.focusArea}. Doelen: ${goals}.`,
-    docSummary,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  try {
+    const { result, durationMs } = await withTimer(async () => {
+      await appendOverseerMessage(coachUserId, "user", userMessage, {
+        ...context,
+        source: "HUMAN",
+      });
 
-  const conversation = history.map((message) => formatMessageForAgent(message)).join("\n\n");
-  const previousReportDate =
-    previousReport?.createdAt && !Number.isNaN(Date.parse(previousReport.createdAt))
-      ? new Date(previousReport.createdAt).toLocaleDateString("nl-NL", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })
-      : previousReport?.createdAt ?? "";
+      const clientDigests = (await listClientDigestsForCoach(coachUserId)).join(
+        "\n\n",
+      );
+      const history = (await getOverseerWindow(coachUserId))
+        .filter((message) => message.role !== "system")
+        .map((message) => ({
+          role: normalizeRole(message.role),
+          content: formatMessageForAgent(message),
+        }));
 
-  const userContentSegments: string[] = [];
+      const storedPrompt = await getOverseerPrompt();
+      const systemPrompt = storedPrompt?.content ?? DEFAULT_OVERSEER_ROLE_PROMPT;
+      const { overseerModel } = await getAIModelSettings();
 
-  if (previousReport) {
-    userContentSegments.push(
-      [
-        `Vorige rapport (${previousReportDate || "onbekende datum"}):`,
-        previousReport.content,
-        "Werk dit rapport bij met de nieuwste context en benoem wat er is bijgekomen of veranderd.",
+      const completion = await runAgentCompletion({
+        model: overseerModel,
+        requestId,
+        operation: "overseer",
+        messages: [
+          {
+            role: "system",
+            content: `${systemPrompt}\n\nCliëntoverzichten:\n${clientDigests}`,
+          },
+          ...history,
+        ],
+      });
+
+      const layered = await applyResponseLayers({
+        agentType: AgentKind.OVERSEER,
+        draftReply: completion.outputText,
+        context: {
+          latestUserMessage: userMessage,
+          additionalContext: clientDigests,
+        },
+        requestId,
+      });
+
+      await appendOverseerMessage(coachUserId, "assistant", layered.reply, {
+        ...context,
+        source: "AI",
+        meta: {
+          responseId: completion.responseId,
+          usage: completion.usage,
+          layers: layered.layers.map((layer) => ({
+            id: layer.id,
+            name: layer.name,
+          })),
+        },
+      });
+
+      return {
+        reply: layered.reply,
+        responseId: completion.responseId,
+        usage: completion.usage,
+      };
+    });
+
+    logInfo("agent.overseer.success", {
+      requestId: requestId ?? null,
+      userId: coachUserId,
+      coachUserId,
+      conversationId: conversationId ?? null,
+      durationMs,
+      responseId: result.responseId,
+      replyLength: result.reply.length,
+      totalTokens: result.usage?.totalTokens,
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+    });
+
+    return result;
+  } catch (error) {
+    logError("agent.overseer.error", {
+      requestId: requestId ?? null,
+      userId: coachUserId,
+      coachUserId,
+      conversationId: conversationId ?? null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+export async function generateClientReport(
+  options: {
+    clientId: string;
+  } & ScopedAgentRunContext,
+): Promise<AgentReply> {
+  const { clientId, requestId, userId, conversationId } = options;
+
+  logInfo("agent.report.start", {
+    requestId: requestId ?? null,
+    userId: userId ?? null,
+    clientId,
+    conversationId: conversationId ?? null,
+  });
+
+  try {
+    const { result, durationMs } = await withTimer(async () => {
+      const client = await getClient(clientId);
+      if (!client) {
+        throw new Error(`Cliënt ${clientId} niet gevonden.`);
+      }
+
+      const history = (await getSessionWindow(userId, clientId, 80)) ?? [];
+      const documentSnippets = await getDocumentSnippets(clientId);
+      const previousReport = await getLatestClientReport(clientId);
+      const { coachModel } = await getAIModelSettings();
+      const storedReportPrompt = await getReportPrompt();
+      const baseReportPrompt = storedReportPrompt?.content ?? DEFAULT_REPORT_ROLE_PROMPT;
+
+      const goals = client.goals.length ? client.goals.join(", ") : "Geen doelen vastgelegd";
+      const docSummary = documentSnippets.length
+        ? `Samenvatting documenten:\n${documentSnippets.join("\n\n")}`
+        : "";
+      const versioningGuidance = previousReport
+        ? "Je werkt met een bestaand rapport. Houd vast wat nog klopt, maar benadruk nieuwe inzichten en voortgang. Noteer duidelijk wat er veranderd is ten opzichte van de vorige versie."
+        : "Er is nog geen eerder rapport; schrijf een eerste, warme rapportage op basis van de meest recente informatie.";
+
+      const systemPrompt = [
+        baseReportPrompt,
+        versioningGuidance,
+        `Cliënt: ${client.name}. Focus: ${client.focusArea}. Doelen: ${goals}.`,
+        docSummary,
       ]
         .filter(Boolean)
-        .join("\n\n"),
-    );
+        .join("\n\n");
+
+      const conversation = history
+        .map((message) => formatMessageForAgent(message))
+        .join("\n\n");
+      const previousReportDate =
+        previousReport?.createdAt && !Number.isNaN(Date.parse(previousReport.createdAt))
+          ? new Date(previousReport.createdAt).toLocaleDateString("nl-NL", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })
+          : previousReport?.createdAt ?? "";
+
+      const userContentSegments: string[] = [];
+
+      if (previousReport) {
+        userContentSegments.push(
+          [
+            `Vorige rapport (${previousReportDate || "onbekende datum"}):`,
+            previousReport.content,
+            "Werk dit rapport bij met de nieuwste context en benoem wat er is bijgekomen of veranderd.",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        );
+      }
+
+      if (conversation) {
+        userContentSegments.push(conversation);
+      }
+
+      if (userContentSegments.length === 0) {
+        userContentSegments.push(
+          "Er zijn nog geen gesprekken gevoerd. Maak een kort rapport met een vriendelijke introductie en herinnering om doelen te stellen.",
+        );
+      }
+
+      const completion = await runAgentCompletion({
+        model: coachModel,
+        requestId,
+        operation: "report",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: userContentSegments.join("\n\n"),
+          },
+        ],
+      });
+
+      const savedReport = await saveClientReport(clientId, completion.outputText);
+
+      return {
+        reply: savedReport.content,
+        responseId: completion.responseId,
+        usage: completion.usage,
+        reportId: savedReport.id,
+        createdAt: savedReport.createdAt,
+      };
+    });
+
+    logInfo("agent.report.success", {
+      requestId: requestId ?? null,
+      userId: userId ?? null,
+      clientId,
+      conversationId: conversationId ?? null,
+      durationMs,
+      responseId: result.responseId,
+      replyLength: result.reply.length,
+      reportId: result.reportId ?? null,
+      totalTokens: result.usage?.totalTokens,
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+    });
+
+    return result;
+  } catch (error) {
+    logError("agent.report.error", {
+      requestId: requestId ?? null,
+      userId: userId ?? null,
+      clientId,
+      conversationId: conversationId ?? null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
-
-  if (conversation) {
-    userContentSegments.push(conversation);
-  }
-
-  if (userContentSegments.length === 0) {
-    userContentSegments.push(
-      "Er zijn nog geen gesprekken gevoerd. Maak een kort rapport met een vriendelijke introductie en herinnering om doelen te stellen.",
-    );
-  }
-
-  const completion = await runAgentCompletion({
-    model: coachModel,
-    messages: [
-      { role: "system", content: systemPrompt },
-      {
-        role: "user",
-        content: userContentSegments.join("\n\n"),
-      },
-    ],
-  });
-
-  const savedReport = await saveClientReport(clientId, completion.outputText);
-
-  return {
-    reply: savedReport.content,
-    responseId: completion.responseId,
-    usage: completion.usage,
-    reportId: savedReport.id,
-    createdAt: savedReport.createdAt,
-  };
 }
 
 function buildCoachSystemPrompt(

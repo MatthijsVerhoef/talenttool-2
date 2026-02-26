@@ -15,6 +15,7 @@ export async function refinePromptWithFeedback(options: {
   agentType: AgentKind;
   basePrompt: string;
   feedback: FeedbackSummary[];
+  requestId?: string;
 }): Promise<string> {
   const roleLabel =
     options.agentType === "COACH" ? "coach assistent" : "overzichtscoach";
@@ -30,6 +31,8 @@ export async function refinePromptWithFeedback(options: {
   const completion = await runAgentCompletion({
     model: PROMPT_REFINER_MODEL,
     temperature: 0.2,
+    requestId: options.requestId,
+    operation: "prompt-refine",
     messages: [
       {
         role: "system",

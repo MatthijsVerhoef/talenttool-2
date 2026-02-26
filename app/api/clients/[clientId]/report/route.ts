@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import type { UserRole } from "@prisma/client";
 
 import { generateClientReport } from "@/lib/agents/service";
+import { OpenAITimeoutError } from "@/lib/ai/openai";
 import { auth } from "@/lib/auth";
 import { getClientForUser, listClientReports } from "@/lib/data/store";
+import { getRequestId, logError, logInfo } from "@/lib/observability";
 
 interface RouteParams {
   params: Promise<{
@@ -11,70 +13,220 @@ interface RouteParams {
   }>;
 }
 
+function jsonWithRequestId(
+  requestId: string,
+  body: unknown,
+  init?: ResponseInit,
+) {
+  const response = NextResponse.json(body, init);
+  response.headers.set("x-request-id", requestId);
+  return response;
+}
+
 export async function GET(request: Request, { params }: RouteParams) {
-  const session = await auth.api.getSession({
-    headers: request.headers,
+  const requestId = getRequestId(request);
+  const route = "/api/clients/[clientId]/report";
+  const startedAt = Date.now();
+  logInfo("api.client-report.get.start", {
+    requestId,
+    route,
+    method: "GET",
   });
 
-  if (!session) {
-    return NextResponse.json({ error: "Niet geautoriseerd" }, { status: 401 });
-  }
+  try {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
 
-  const { clientId } = await params;
-  if (!clientId) {
-    return NextResponse.json(
-      { error: "Cliënt ontbreekt." },
-      { status: 400 }
+    if (!session) {
+      const durationMs = Date.now() - startedAt;
+      logInfo("api.client-report.get.end", {
+        requestId,
+        route,
+        method: "GET",
+        status: 401,
+        durationMs,
+      });
+      return jsonWithRequestId(
+        requestId,
+        { error: "Niet geautoriseerd" },
+        { status: 401 },
+      );
+    }
+
+    const { clientId } = await params;
+    if (!clientId) {
+      const durationMs = Date.now() - startedAt;
+      logInfo("api.client-report.get.end", {
+        requestId,
+        route,
+        method: "GET",
+        userId: session.user.id,
+        status: 400,
+        durationMs,
+      });
+      return jsonWithRequestId(
+        requestId,
+        { error: "Cliënt ontbreekt." },
+        { status: 400 },
+      );
+    }
+
+    const client = await getClientForUser(
+      clientId,
+      session.user.id,
+      session.user.role as UserRole,
+    );
+    if (!client) {
+      const durationMs = Date.now() - startedAt;
+      logInfo("api.client-report.get.end", {
+        requestId,
+        route,
+        method: "GET",
+        userId: session.user.id,
+        clientId,
+        status: 404,
+        durationMs,
+      });
+      return jsonWithRequestId(
+        requestId,
+        { error: "Cliënt niet gevonden." },
+        { status: 404 },
+      );
+    }
+
+    const url = new URL(request.url);
+    const limitParam = url.searchParams.get("limit");
+    const limit = limitParam ? Number(limitParam) : 5;
+
+    const reports = await listClientReports(
+      clientId,
+      Number.isNaN(limit) ? 5 : limit,
+    );
+    const durationMs = Date.now() - startedAt;
+    logInfo("api.client-report.get.end", {
+      requestId,
+      route,
+      method: "GET",
+      userId: session.user.id,
+      clientId,
+      reportCount: reports.length,
+      status: 200,
+      durationMs,
+    });
+    return jsonWithRequestId(requestId, { reports });
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    logError("api.client-report.get.error", {
+      requestId,
+      route,
+      method: "GET",
+      durationMs,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Rapport ophalen is mislukt." },
+      { status: 500 },
     );
   }
-
-  const client = await getClientForUser(
-    clientId,
-    session.user.id,
-    session.user.role as UserRole
-  );
-  if (!client) {
-    return NextResponse.json({ error: "Cliënt niet gevonden." }, { status: 404 });
-  }
-
-  const url = new URL(request.url);
-  const limitParam = url.searchParams.get("limit");
-  const limit = limitParam ? Number(limitParam) : 5;
-
-  const reports = await listClientReports(clientId, Number.isNaN(limit) ? 5 : limit);
-  return NextResponse.json({ reports });
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
-  const session = await auth.api.getSession({
-    headers: request.headers,
+  const requestId = getRequestId(request);
+  const route = "/api/clients/[clientId]/report";
+  const startedAt = Date.now();
+  logInfo("api.client-report.post.start", {
+    requestId,
+    route,
+    method: "POST",
   });
 
-  if (!session) {
-    return NextResponse.json({ error: "Niet geautoriseerd" }, { status: 401 });
-  }
-
-  const { clientId } = await params;
-
-  if (!clientId) {
-    return NextResponse.json(
-      { error: "Cliënt ontbreekt." },
-      { status: 400 }
-    );
-  }
-
-  const client = await getClientForUser(
-    clientId,
-    session.user.id,
-    session.user.role as UserRole
-  );
-  if (!client) {
-    return NextResponse.json({ error: "Cliënt niet gevonden." }, { status: 404 });
-  }
-
   try {
-    const result = await generateClientReport(clientId);
-    return NextResponse.json({
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      const durationMs = Date.now() - startedAt;
+      logInfo("api.client-report.post.end", {
+        requestId,
+        route,
+        method: "POST",
+        status: 401,
+        durationMs,
+      });
+      return jsonWithRequestId(
+        requestId,
+        { error: "Niet geautoriseerd" },
+        { status: 401 },
+      );
+    }
+
+    const { clientId } = await params;
+
+    if (!clientId) {
+      const durationMs = Date.now() - startedAt;
+      logInfo("api.client-report.post.end", {
+        requestId,
+        route,
+        method: "POST",
+        userId: session.user.id,
+        status: 400,
+        durationMs,
+      });
+      return jsonWithRequestId(
+        requestId,
+        { error: "Cliënt ontbreekt." },
+        { status: 400 },
+      );
+    }
+
+    const client = await getClientForUser(
+      clientId,
+      session.user.id,
+      session.user.role as UserRole,
+    );
+    if (!client) {
+      const durationMs = Date.now() - startedAt;
+      logInfo("api.client-report.post.end", {
+        requestId,
+        route,
+        method: "POST",
+        userId: session.user.id,
+        clientId,
+        status: 404,
+        durationMs,
+      });
+      return jsonWithRequestId(
+        requestId,
+        { error: "Cliënt niet gevonden." },
+        { status: 404 },
+      );
+    }
+
+    const result = await generateClientReport({
+      clientId,
+      requestId,
+      userId: session.user.id,
+    });
+    const durationMs = Date.now() - startedAt;
+    logInfo("api.client-report.post.end", {
+      requestId,
+      route,
+      method: "POST",
+      userId: session.user.id,
+      clientId,
+      status: 200,
+      durationMs,
+      responseId: result.responseId,
+      reportId: result.reportId ?? null,
+      replyLength: result.reply.length,
+      totalTokens: result.usage?.totalTokens,
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+    });
+    return jsonWithRequestId(requestId, {
       report: result.reply,
       responseId: result.responseId,
       usage: result.usage ?? null,
@@ -82,12 +234,28 @@ export async function POST(request: Request, { params }: RouteParams) {
       createdAt: result.createdAt,
     });
   } catch (error) {
-    console.error("Client report error", error);
+    const durationMs = Date.now() - startedAt;
+    const isTimeout = error instanceof OpenAITimeoutError;
     const message =
-      error instanceof Error
-        ? error.message
-        : "Rapport genereren is mislukt.";
-    const status = message.includes("niet gevonden") ? 404 : 500;
-    return NextResponse.json({ error: message }, { status });
+      error instanceof Error ? error.message : "Rapport genereren is mislukt.";
+    const status = isTimeout ? 504 : message.includes("niet gevonden") ? 404 : 500;
+    logError("api.client-report.post.error", {
+      requestId,
+      route,
+      method: "POST",
+      durationMs,
+      status,
+      errorMessage: message,
+    });
+    return jsonWithRequestId(
+      requestId,
+      {
+        error: isTimeout
+          ? "Rapportgeneratie reageerde niet binnen de ingestelde tijd."
+          : message,
+        requestId,
+      },
+      { status },
+    );
   }
 }

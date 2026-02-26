@@ -46,3 +46,45 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## VERIFY.md
+
+Use this checklist to verify correlation IDs and structured logs locally:
+
+1. Start the app with `npm run dev`.
+2. Open the dashboard and send a coach message.
+3. In server logs, confirm ordered events exist with the same `requestId`:
+   - `api.coach.post.start` / `api.coach.post.end` (or `.error`)
+   - `agent.coach.start` / `agent.coach.success` (or `.error`)
+   - `openai.start` / `openai.success` (or `openai.timeout` / `openai.error`)
+4. Confirm API responses include header `x-request-id` (browser devtools Network tab).
+5. Set `OPENAI_STALL_MS=60000` (with default `OPENAI_TIMEOUT_MS=45000`) and trigger a chat/report/prompt refine call; confirm route returns HTTP `504` with `requestId` in JSON and logs contain `openai.timeout`.
+6. Repeat for overseer, report generation, and prompt routes (`/api/prompts/*`).
+
+## Session dedupe verification SQL
+
+```sql
+SELECT
+  "ownerUserId",
+  "clientId",
+  COUNT(*) AS duplicate_count
+FROM "CoachingSession"
+GROUP BY "ownerUserId", "clientId"
+HAVING COUNT(*) > 1;
+```
+
+## Prompt security verification
+
+1. Anonymous `POST /api/prompts/coach` returns `401`.
+2. Authenticated non-admin `POST /api/prompts/coach` returns `403`.
+3. Authenticated admin `POST /api/prompts/coach` returns `200`.
+4. Confirm audit rows exist:
+
+```sql
+SELECT *
+FROM "PromptAudit"
+ORDER BY "createdAt" DESC
+LIMIT 5;
+```
+
+5. Confirm `GET /api/prompts/{coach|overseer|report}` requires authentication and responses include `x-request-id`.

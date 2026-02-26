@@ -9,6 +9,7 @@ import {
 
 import { DEFAULT_COACH_MODEL, DEFAULT_OVERSEER_MODEL } from "@/lib/agents/models";
 import { prisma } from "@/lib/prisma";
+import { sha256 } from "@/lib/security/hash";
 
 export type AgentRole = "user" | "assistant" | "system" | "overseer";
 
@@ -22,6 +23,12 @@ export interface AgentMessage {
 }
 export interface StoredAgentMessage extends AgentMessage {
   clientId?: string;
+}
+
+export interface OverseerMessageContext {
+  clientId?: string;
+  coachingSessionId?: string;
+  sourceAgentMessageId?: string;
 }
 
 export interface ClientProfile {
@@ -83,30 +90,38 @@ const COACH_MODEL_SETTING_ID = "coach-model";
 const OVERSEER_MODEL_SETTING_ID = "overseer-model";
 const DOCUMENT_SNIPPET_MAX_CHARS = Number(process.env.DOCUMENT_SNIPPET_MAX_CHARS ?? "0");
 
-async function ensureSession(clientId: string) {
+export type PromptKey = "coach" | "overseer" | "report";
+
+const PROMPT_ID_BY_KEY: Record<PromptKey, string> = {
+  coach: COACH_PROMPT_ID,
+  overseer: OVERSEER_PROMPT_ID,
+  report: REPORT_PROMPT_ID,
+};
+
+async function ensureSession(userId: string, clientId: string) {
   const client = await prisma.client.findUnique({
     where: { id: clientId },
+    select: { id: true },
   });
 
   if (!client) {
     return null;
   }
 
-  let session = await prisma.coachingSession.findFirst({
-    where: { clientId },
-    orderBy: { createdAt: "asc" },
-  });
-
-  if (!session) {
-    session = await prisma.coachingSession.create({
-      data: {
+  return prisma.coachingSession.upsert({
+    where: {
+      ownerUserId_clientId: {
+        ownerUserId: userId,
         clientId,
-        title: "Default Session",
       },
-    });
-  }
-
-  return session;
+    },
+    update: {},
+    create: {
+      ownerUserId: userId,
+      clientId,
+      title: "Default Session",
+    },
+  });
 }
 
 export async function getClients(options?: {
@@ -151,14 +166,15 @@ export async function getClientForUser(
   userId: string,
   role: UserRole
 ): Promise<ClientProfile | null> {
-  const client = await prisma.client.findFirst({
-    where:
-      role === UserRole.ADMIN
-        ? { id: clientId }
-        : {
-            id: clientId,
-            coachId: userId,
-          },
+  if (role !== UserRole.ADMIN) {
+    const ownsClient = await assertCoachOwnsClient(userId, clientId);
+    if (!ownsClient) {
+      return null;
+    }
+  }
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
     include: { goals: true },
   });
 
@@ -167,6 +183,67 @@ export async function getClientForUser(
   }
 
   return mapClientProfile(client);
+}
+
+export async function assertCoachOwnsClient(
+  coachUserId: string,
+  clientId: string,
+): Promise<boolean> {
+  const count = await prisma.client.count({
+    where: {
+      id: clientId,
+      coachId: coachUserId,
+    },
+  });
+  return count > 0;
+}
+
+export async function getOwnedCoachingSession(
+  ownerUserId: string,
+  coachingSessionId: string,
+): Promise<{ id: string; clientId: string } | null> {
+  return prisma.coachingSession.findFirst({
+    where: {
+      id: coachingSessionId,
+      ownerUserId,
+    },
+    select: {
+      id: true,
+      clientId: true,
+    },
+  });
+}
+
+export async function getOwnedAgentMessage(
+  ownerUserId: string,
+  messageId: string,
+): Promise<{ id: string; sessionId: string; clientId: string } | null> {
+  const record = await prisma.agentMessage.findFirst({
+    where: {
+      id: messageId,
+      session: {
+        ownerUserId,
+      },
+    },
+    select: {
+      id: true,
+      sessionId: true,
+      session: {
+        select: {
+          clientId: true,
+        },
+      },
+    },
+  });
+
+  if (!record) {
+    return null;
+  }
+  return {
+    id: record.id,
+    sessionId: record.sessionId,
+    clientId: record.session.clientId,
+  };
 }
 
 export async function getLatestClientReport(
@@ -315,13 +392,14 @@ export async function updateUserProfile(
 export type MessageSource = "AI" | "HUMAN";
 
 export async function appendClientMessage(
+  userId: string,
   clientId: string,
   role: AgentRole,
   content: string,
   meta?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
   source: MessageSource = "AI",
 ): Promise<AgentMessage> {
-  const session = await ensureSession(clientId);
+  const session = await ensureSession(userId, clientId);
   if (!session) {
     throw new Error(`Client ${clientId} not found.`);
   }
@@ -340,10 +418,11 @@ export async function appendClientMessage(
 }
 
 export async function getSessionWindow(
+  userId: string,
   clientId: string,
   limit = 12,
 ): Promise<AgentMessage[] | null> {
-  const session = await ensureSession(clientId);
+  const session = await ensureSession(userId, clientId);
   if (!session) {
     return null;
   }
@@ -357,26 +436,38 @@ export async function getSessionWindow(
   return messages.reverse().map(mapAgentMessage);
 }
 
-export async function recordOverseerMessage(
-  role: AgentRole,
-  source: MessageSource,
+export async function appendOverseerMessage(
+  coachUserId: string,
+  role: "user" | "assistant",
   content: string,
-  meta?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
+  ctx?: OverseerMessageContext & {
+    source?: MessageSource;
+    meta?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput;
+  },
 ): Promise<AgentMessage> {
+  const source = ctx?.source ?? (role === "user" ? "HUMAN" : "AI");
   const message = await prisma.overseerMessage.create({
     data: {
+      coachUserId,
       role,
       source,
       content,
-      meta,
+      meta: ctx?.meta,
+      clientId: ctx?.clientId,
+      coachingSessionId: ctx?.coachingSessionId,
+      sourceAgentMessageId: ctx?.sourceAgentMessageId,
     },
   });
 
   return mapOverseerMessage(message);
 }
 
-export async function getOverseerThread(limit = 20): Promise<AgentMessage[]> {
+export async function getOverseerWindow(
+  coachUserId: string,
+  limit = 20,
+): Promise<AgentMessage[]> {
   const messages = await prisma.overseerMessage.findMany({
+    where: { coachUserId },
     orderBy: { createdAt: "desc" },
     take: limit,
   });
@@ -384,7 +475,10 @@ export async function getOverseerThread(limit = 20): Promise<AgentMessage[]> {
   return messages.reverse().map(mapOverseerMessage);
 }
 
-export async function getClientDigest(clientId: string): Promise<string> {
+export async function getClientDigest(
+  clientId: string,
+  ownerUserId?: string,
+): Promise<string> {
   const client = await prisma.client.findUnique({
     where: { id: clientId },
     include: { goals: true },
@@ -398,6 +492,7 @@ export async function getClientDigest(clientId: string): Promise<string> {
     where: {
       session: {
         clientId,
+        ...(ownerUserId ? { ownerUserId } : {}),
       },
       role: "assistant",
     },
@@ -421,6 +516,21 @@ export async function listClientDigests(): Promise<string[]> {
 
   const digests = await Promise.all(
     clients.map((client) => getClientDigest(client.id)),
+  );
+
+  return digests.filter((digest) => Boolean(digest));
+}
+
+export async function listClientDigestsForCoach(
+  coachUserId: string,
+): Promise<string[]> {
+  const clients = await prisma.client.findMany({
+    where: { coachId: coachUserId },
+    select: { id: true },
+  });
+
+  const digests = await Promise.all(
+    clients.map((client) => getClientDigest(client.id, coachUserId)),
   );
 
   return digests.filter((digest) => Boolean(digest));
@@ -462,19 +572,41 @@ function mapAgentMessage(message: {
 
 function mapOverseerMessage(message: {
   id: string;
+  coachUserId?: string;
+  clientId?: string | null;
+  coachingSessionId?: string | null;
+  sourceAgentMessageId?: string | null;
   role: string;
   source?: MessageSource | null;
   content: string;
   createdAt: Date;
   meta: Prisma.JsonValue | null;
 }): AgentMessage {
+  const baseMeta =
+    message.meta && typeof message.meta === "object"
+      ? { ...(message.meta as Record<string, unknown>) }
+      : {};
+  const context: OverseerMessageContext = {
+    clientId: message.clientId ?? undefined,
+    coachingSessionId: message.coachingSessionId ?? undefined,
+    sourceAgentMessageId: message.sourceAgentMessageId ?? undefined,
+  };
+  const hasContext =
+    Boolean(context.clientId) ||
+    Boolean(context.coachingSessionId) ||
+    Boolean(context.sourceAgentMessageId);
+  const mergedMeta = {
+    ...baseMeta,
+    ...(hasContext ? { context } : {}),
+  };
+
   return {
     id: message.id,
     role: (message.role as AgentRole) ?? "assistant",
     source: message.source ?? "AI",
     content: message.content,
     createdAt: message.createdAt.toISOString(),
-    meta: (message.meta as Record<string, unknown> | null) ?? null,
+    meta: Object.keys(mergedMeta).length > 0 ? mergedMeta : null,
   };
 }
 
@@ -577,6 +709,13 @@ export interface SystemPromptRecord {
   updatedAt: string;
 }
 
+export interface PromptMutationResult {
+  prompt: SystemPromptRecord;
+  action: "create" | "update";
+  oldLength: number | null;
+  newLength: number;
+}
+
 export interface AgentFeedbackRecord {
   id: string;
   agentType: AgentKind;
@@ -605,41 +744,94 @@ async function getPromptRecord(id: string): Promise<SystemPromptRecord | null> {
   };
 }
 
-async function upsertPromptRecord(id: string, content: string): Promise<SystemPromptRecord> {
-  const prompt = await prisma.systemPrompt.upsert({
-    where: { id },
-    update: { content },
-    create: { id, content },
-  });
-
-  return {
-    content: prompt.content,
-    updatedAt: prompt.updatedAt.toISOString(),
-  };
-}
-
 export async function getCoachPrompt(): Promise<SystemPromptRecord | null> {
   return getPromptRecord(COACH_PROMPT_ID);
 }
 
-export async function updateCoachPrompt(content: string): Promise<SystemPromptRecord> {
-  return upsertPromptRecord(COACH_PROMPT_ID, content);
+export async function updatePrompt(
+  promptKey: PromptKey,
+  newContent: string,
+  actorUserId: string,
+  requestId?: string,
+  ip?: string,
+): Promise<PromptMutationResult> {
+  const promptId = PROMPT_ID_BY_KEY[promptKey];
+
+  return prisma.$transaction(async (tx) => {
+    const previous = await tx.systemPrompt.findUnique({
+      where: { id: promptId },
+    });
+    const action: "create" | "update" = previous ? "update" : "create";
+    const oldLength = previous?.content.length ?? null;
+    const oldHash = previous ? sha256(previous.content) : null;
+    const newLength = newContent.length;
+    const newHash = sha256(newContent);
+
+    const saved = await tx.systemPrompt.upsert({
+      where: { id: promptId },
+      update: { content: newContent },
+      create: { id: promptId, content: newContent },
+    });
+
+    await tx.promptAudit.create({
+      data: {
+        actorUserId,
+        promptKey,
+        action,
+        oldHash,
+        newHash,
+        oldLength,
+        newLength,
+        requestId: requestId ?? null,
+        ip: ip ?? null,
+      },
+    });
+
+    return {
+      prompt: {
+        content: saved.content,
+        updatedAt: saved.updatedAt.toISOString(),
+      },
+      action,
+      oldLength,
+      newLength,
+    };
+  });
+}
+
+export async function updateCoachPrompt(
+  content: string,
+  actorUserId: string,
+  requestId?: string,
+  ip?: string,
+): Promise<PromptMutationResult> {
+  return updatePrompt("coach", content, actorUserId, requestId, ip);
 }
 
 export async function getOverseerPrompt(): Promise<SystemPromptRecord | null> {
   return getPromptRecord(OVERSEER_PROMPT_ID);
 }
 
-export async function updateOverseerPrompt(content: string): Promise<SystemPromptRecord> {
-  return upsertPromptRecord(OVERSEER_PROMPT_ID, content);
+export async function updateOverseerPrompt(
+  content: string,
+  actorUserId: string,
+  requestId?: string,
+  ip?: string,
+): Promise<PromptMutationResult> {
+  return updatePrompt("overseer", content, actorUserId, requestId, ip);
 }
 
 export async function getReportPrompt(): Promise<SystemPromptRecord | null> {
   return getPromptRecord(REPORT_PROMPT_ID);
 }
 
-export async function updateReportPrompt(content: string): Promise<SystemPromptRecord> {
-  return upsertPromptRecord(REPORT_PROMPT_ID, content);
+export async function updateReportPrompt(
+  content: string,
+  actorUserId: string,
+  requestId?: string,
+  ip?: string,
+): Promise<PromptMutationResult> {
+  return updatePrompt("report", content, actorUserId, requestId, ip);
 }
 
 export async function getAgentMessageById(
@@ -668,9 +860,13 @@ export async function getAgentMessageById(
 
 export async function getOverseerMessageById(
   messageId: string,
+  coachUserId: string,
 ): Promise<StoredAgentMessage | null> {
-  const record = await prisma.overseerMessage.findUnique({
-    where: { id: messageId },
+  const record = await prisma.overseerMessage.findFirst({
+    where: {
+      id: messageId,
+      coachUserId,
+    },
   });
 
   if (!record) {

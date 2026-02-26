@@ -1,5 +1,6 @@
 // prisma/seed.mjs
 import { PrismaClient } from '@prisma/client';
+import { hashPassword } from 'better-auth/crypto';
 
 const prisma = new PrismaClient();
 
@@ -13,6 +14,53 @@ async function main() {
   await prisma.clientGoal.deleteMany({});
   await prisma.client.deleteMany({});
 
+  const seedCoach = await prisma.user.upsert({
+    where: { email: 'seed.coach@talenttool.local' },
+    update: {
+      name: 'Seed Coach',
+      role: 'COACH',
+    },
+    create: {
+      name: 'Seed Coach',
+      email: 'seed.coach@talenttool.local',
+      role: 'COACH',
+    },
+  });
+
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'matthijs@admin.nl' },
+    update: {
+      name: 'Matthijs Admin',
+      role: 'ADMIN',
+    },
+    create: {
+      name: 'Matthijs Admin',
+      email: 'matthijs@admin.nl',
+      role: 'ADMIN',
+      emailVerified: true,
+    },
+  });
+
+  const adminPasswordHash = await hashPassword('admin123');
+  await prisma.account.upsert({
+    where: {
+      providerId_accountId: {
+        providerId: 'credential',
+        accountId: adminUser.id,
+      },
+    },
+    update: {
+      userId: adminUser.id,
+      password: adminPasswordHash,
+    },
+    create: {
+      userId: adminUser.id,
+      providerId: 'credential',
+      accountId: adminUser.id,
+      password: adminPasswordHash,
+    },
+  });
+
   // Clients aanmaken
   console.log('👥 Clients aanmaken...');
   
@@ -21,6 +69,7 @@ async function main() {
       name: 'Sarah Johnson',
       focusArea: 'Leiderschapsontwikkeling',
       summary: 'Senior manager die wil doorgroeien naar een executive leiderschapsrol. Richt zich op strategisch denken en teamontwikkeling.',
+      coachId: seedCoach.id,
       goals: {
         create: [
           { value: 'Ontwikkelen van executive presence en communicatieve vaardigheden' },
@@ -36,6 +85,7 @@ async function main() {
       name: 'Michael Chen',
       focusArea: 'Carrièretransitie',
       summary: 'Software engineer die overstapt naar productmanagement. Wil zijn technische achtergrond benutten en tegelijkertijd zakelijke vaardigheden ontwikkelen.',
+      coachId: seedCoach.id,
       goals: {
         create: [
           { value: 'Voltooien van productmanagementcertificering' },
@@ -52,6 +102,7 @@ async function main() {
       name: 'Emma Rodriguez',
       focusArea: 'Werk-privébalans',
       summary: 'Startup-oprichter die worstelt met burn-out. Wil duurzame gewoontes opbouwen terwijl het bedrijf groeit.',
+      coachId: seedCoach.id,
       goals: {
         create: [
           { value: 'Duidelijke grenzen creëren tussen werk- en privétijd' },
@@ -67,6 +118,7 @@ async function main() {
       name: 'Maarten van Heugten',
       focusArea: 'Public Speaking',
       summary: 'Technisch expert die een thought leader wil worden. Werkt aan conferentiepresentaties en contentcreatie.',
+      coachId: seedCoach.id,
       goals: {
         create: [
           { value: 'Keynote geven op een grote brancheconferentie' },
@@ -83,6 +135,7 @@ async function main() {
       name: 'Lisa Thompson',
       focusArea: 'Teammanagement',
       summary: 'Nieuwe manager, gepromoveerd vanuit een individuele rol. Leert omgaan met teamdynamiek en prestatiemanagement.',
+      coachId: seedCoach.id,
       goals: {
         create: [
           { value: 'Managementtrainingsprogramma voltooien' },
@@ -96,12 +149,11 @@ async function main() {
   // Coaching sessies zonder vooraf ingevulde berichten
   console.log('💬 Lege coaching sessies aanmaken...');
   const sessions = [
-    { clientId: client1.id, title: 'Initiële Analyse - Leiderschapsdoelen' },
-    { clientId: client1.id, title: 'Workshop Strategisch Denken' },
-    { clientId: client2.id, title: 'Carrière-Pivot Strategie' },
-    { clientId: client3.id, title: 'Herstelplan bij Burn-out' },
-    { clientId: client4.id, title: 'Je Spreekplatform Opbouwen' },
-    { clientId: client5.id, title: 'Fundamenten voor Eerste-Keer Managers' },
+    { clientId: client1.id, ownerUserId: seedCoach.id, title: 'Initiële Analyse - Leiderschapsdoelen' },
+    { clientId: client2.id, ownerUserId: seedCoach.id, title: 'Carrière-Pivot Strategie' },
+    { clientId: client3.id, ownerUserId: seedCoach.id, title: 'Herstelplan bij Burn-out' },
+    { clientId: client4.id, ownerUserId: seedCoach.id, title: 'Je Spreekplatform Opbouwen' },
+    { clientId: client5.id, ownerUserId: seedCoach.id, title: 'Fundamenten voor Eerste-Keer Managers' },
   ];
 
   for (const session of sessions) {
@@ -114,26 +166,31 @@ async function main() {
   await prisma.overseerMessage.createMany({
     data: [
       {
+        coachUserId: seedCoach.id,
         role: 'system',
         content: 'Coachingplatform geïnitieerd met nieuwe AI-ondersteunde functies',
         meta: { type: 'announcement', version: '2.0.0' },
       },
       {
+        coachUserId: seedCoach.id,
         role: 'system',
         content: 'Wekelijkse voortgangsrapportages zijn nu beschikbaar voor alle actieve cliënten',
         meta: { type: 'feature_update', feature: 'reporting' },
       },
       {
+        coachUserId: seedCoach.id,
         role: 'admin',
         content: 'Coachingresultaten Q4 2024: 87% van de cliënten behaalde ten minste één belangrijk doel',
         meta: { type: 'metrics', period: 'Q4-2024' },
       },
       {
+        coachUserId: seedCoach.id,
         role: 'system',
         content: 'Nieuwe assessmenttools geïntegreerd: Leadership 360, Career Values Inventory',
         meta: { type: 'tool_update', tools: ['Leadership 360', 'Career Values Inventory'] },
       },
       {
+        coachUserId: seedCoach.id,
         role: 'admin',
         content: 'Herinnering: alle coaches dienen de kwartaaltraining over actief luisteren te voltooien vóór 2025-01-31',
         meta: { type: 'training_reminder', due_date: '2025-01-31' },
