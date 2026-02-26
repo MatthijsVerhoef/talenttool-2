@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import type { UserRole } from "@prisma/client";
 
 import { generateClientReport } from "@/lib/agents/service";
 import { OpenAITimeoutError } from "@/lib/ai/openai";
 import { auth } from "@/lib/auth";
-import { getClientForUser, listClientReports } from "@/lib/data/store";
+import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
+import { listClientReports } from "@/lib/data/store";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 
 interface RouteParams {
@@ -34,8 +34,9 @@ export async function GET(request: Request, { params }: RouteParams) {
   });
 
   try {
+    const cookie = request.headers.get("cookie") ?? "";
     const session = await auth.api.getSession({
-      headers: request.headers,
+      headers: { cookie },
     });
 
     if (!session) {
@@ -72,37 +73,38 @@ export async function GET(request: Request, { params }: RouteParams) {
       );
     }
 
-    const client = await getClientForUser(
-      clientId,
-      session.user.id,
-      session.user.role as UserRole,
-    );
-    if (!client) {
-      const durationMs = Date.now() - startedAt;
-      logInfo("api.client-report.get.end", {
-        requestId,
-        route,
-        method: "GET",
-        userId: session.user.id,
+    try {
+      await assertCanAccessClient(
+        { id: session.user.id, role: session.user.role },
         clientId,
-        status: 404,
-        durationMs,
-      });
-      return jsonWithRequestId(
-        requestId,
-        { error: "Cliënt niet gevonden." },
-        { status: 404 },
+        { requestId, route, clientId },
       );
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        const durationMs = Date.now() - startedAt;
+        logInfo("api.client-report.get.end", {
+          requestId,
+          route,
+          method: "GET",
+          userId: session.user.id,
+          clientId,
+          status: 403,
+          durationMs,
+        });
+        return jsonWithRequestId(
+          requestId,
+          { error: error.message },
+          { status: 403 },
+        );
+      }
+      throw error;
     }
 
-    const url = new URL(request.url);
-    const limitParam = url.searchParams.get("limit");
-    const limit = limitParam ? Number(limitParam) : 5;
+    const { searchParams } = new URL(request.url);
+    const limitParam = Number(searchParams.get("limit") ?? "5");
+    const limit = Number.isNaN(limitParam) ? 5 : Math.max(1, Math.min(limitParam, 20));
 
-    const reports = await listClientReports(
-      clientId,
-      Number.isNaN(limit) ? 5 : limit,
-    );
+    const reports = await listClientReports(clientId, limit);
     const durationMs = Date.now() - startedAt;
     logInfo("api.client-report.get.end", {
       requestId,
@@ -114,6 +116,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       status: 200,
       durationMs,
     });
+
     return jsonWithRequestId(requestId, { reports });
   } catch (error) {
     const durationMs = Date.now() - startedAt;
@@ -143,8 +146,9 @@ export async function POST(request: Request, { params }: RouteParams) {
   });
 
   try {
+    const cookie = request.headers.get("cookie") ?? "";
     const session = await auth.api.getSession({
-      headers: request.headers,
+      headers: { cookie },
     });
 
     if (!session) {
@@ -182,27 +186,31 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
-    const client = await getClientForUser(
-      clientId,
-      session.user.id,
-      session.user.role as UserRole,
-    );
-    if (!client) {
-      const durationMs = Date.now() - startedAt;
-      logInfo("api.client-report.post.end", {
-        requestId,
-        route,
-        method: "POST",
-        userId: session.user.id,
+    try {
+      await assertCanAccessClient(
+        { id: session.user.id, role: session.user.role },
         clientId,
-        status: 404,
-        durationMs,
-      });
-      return jsonWithRequestId(
-        requestId,
-        { error: "Cliënt niet gevonden." },
-        { status: 404 },
+        { requestId, route, clientId },
       );
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        const durationMs = Date.now() - startedAt;
+        logInfo("api.client-report.post.end", {
+          requestId,
+          route,
+          method: "POST",
+          userId: session.user.id,
+          clientId,
+          status: 403,
+          durationMs,
+        });
+        return jsonWithRequestId(
+          requestId,
+          { error: error.message },
+          { status: 403 },
+        );
+      }
+      throw error;
     }
 
     const result = await generateClientReport({
@@ -226,6 +234,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       inputTokens: result.usage?.inputTokens,
       outputTokens: result.usage?.outputTokens,
     });
+
     return jsonWithRequestId(requestId, {
       report: result.reply,
       responseId: result.responseId,

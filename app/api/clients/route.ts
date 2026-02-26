@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import type { UserRole } from "@prisma/client";
 
 import { auth } from "@/lib/auth";
+import { isAdmin } from "@/lib/authz";
 import { createClient, getClients } from "@/lib/data/store";
 import { isCoachUser } from "@/lib/data/users";
 
 export async function GET(request: Request) {
+  const cookie = request.headers.get("cookie") ?? "";
   const session = await auth.api.getSession({
-    headers: request.headers,
+    headers: { cookie },
   });
 
   if (!session) {
@@ -23,11 +25,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const cookie = request.headers.get("cookie") ?? "";
   const session = await auth.api.getSession({
-    headers: request.headers,
+    headers: { cookie },
   });
 
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session) {
+    return NextResponse.json({ error: "Niet geautoriseerd" }, { status: 401 });
+  }
+
+  if (!isAdmin({ id: session.user.id, role: session.user.role })) {
     return NextResponse.json({ error: "Niet geautoriseerd" }, { status: 403 });
   }
 

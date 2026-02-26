@@ -31,6 +31,7 @@ import {
   FileText,
 } from "lucide-react";
 import type { UserRole } from "@prisma/client";
+import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth-client";
 import { AdminUserManagement } from "@/components/admin/user-management";
@@ -923,7 +924,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             id: assistantTempId,
             role: "assistant",
             source: "AI",
-            content: "De coach formuleert een antwoord...",
+            content: "",
             createdAt: timestamp,
             meta: { pending: true },
           },
@@ -932,8 +933,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     });
     scrollToBottom(coachMessagesRef);
 
-    try {
-      const response = await fetch(`/api/coach/${clientId}`, {
+    let streamAccepted = false;
+    const runBlockingFallback = async () => {
+      const fallbackResponse = await fetch(`/api/coach/${clientId}`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -949,26 +951,203 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         signal: controller.signal,
       });
 
-      const responseRequestId =
-        response.headers.get("x-request-id") ?? requestId;
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const responseError =
-          typeof data.error === "string"
-            ? data.error
+      const fallbackRequestId =
+        fallbackResponse.headers.get("x-request-id") ?? requestId;
+      const fallbackData = await fallbackResponse.json().catch(() => ({}));
+      if (!fallbackResponse.ok) {
+        const fallbackError =
+          typeof fallbackData.error === "string"
+            ? fallbackData.error
             : "Coach kon niet reageren.";
-        throw new Error(`${responseError} (requestId: ${responseRequestId})`);
+        throw new Error(`${fallbackError} (requestId: ${fallbackRequestId})`);
       }
 
-      const activeRequest = activeCoachRequestsRef.current[clientId];
-      if (activeRequest?.requestId !== requestId) {
-        return;
-      }
       setClientHistories((prev) => ({
         ...prev,
-        [clientId]: data.history ?? [],
+        [clientId]: fallbackData.history ?? [],
       }));
       scrollToBottom(coachMessagesRef);
+    };
+
+    try {
+      let streamDone = false;
+
+      const applyDeltaToAssistant = (delta: string) => {
+        setClientHistories((prev) => {
+          const prevHistory = prev[clientId] ?? [];
+          return {
+            ...prev,
+            [clientId]: prevHistory.map((entry) => {
+              if (entry.id !== assistantTempId) {
+                return entry;
+              }
+              const isPlaceholder =
+                entry.content === "De coach formuleert een antwoord...";
+              return {
+                ...entry,
+                content: `${isPlaceholder ? "" : entry.content}${delta}`,
+                meta: { ...(entry.meta ?? {}), pending: true },
+              };
+            }),
+          };
+        });
+      };
+
+      const clearAssistantPending = () => {
+        setClientHistories((prev) => {
+          const prevHistory = prev[clientId] ?? [];
+          return {
+            ...prev,
+            [clientId]: prevHistory.map((entry) =>
+              entry.id === assistantTempId
+                ? { ...entry, meta: { ...(entry.meta ?? {}), pending: false } }
+                : entry
+            ),
+          };
+        });
+      };
+
+      const response = await fetch(`/api/coach/${clientId}/stream`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-request-id": requestId,
+          "x-client-id": clientId,
+          "x-conversation-id": conversationId,
+        },
+        body: JSON.stringify({
+          message: trimmedMessage,
+          conversationId,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error("STREAM_UNAVAILABLE");
+      }
+
+      const decoder = new TextDecoder();
+      const reader = response.body.getReader();
+      let buffered = "";
+      let eventName = "message";
+      let eventDataLines: string[] = [];
+
+      const handleEvent = (name: string, rawData: string) => {
+        if (!rawData) {
+          return;
+        }
+        if (name === "meta") {
+          const payload = JSON.parse(rawData) as {
+            requestId?: unknown;
+          };
+          if (typeof payload.requestId === "string") {
+            const streamRequestId = payload.requestId;
+            setCoachLastRequestIdByClientId((prev) => ({
+              ...prev,
+              [clientId]: streamRequestId,
+            }));
+          }
+          streamAccepted = true;
+          return;
+        }
+
+        if (name === "delta") {
+          const payload = JSON.parse(rawData) as {
+            text?: unknown;
+          };
+          if (typeof payload.text === "string" && payload.text.length > 0) {
+            applyDeltaToAssistant(payload.text);
+            scrollToBottom(coachMessagesRef);
+          }
+          return;
+        }
+
+        if (name === "done") {
+          streamDone = true;
+          clearAssistantPending();
+          return;
+        }
+
+        if (name === "error") {
+          const payload = JSON.parse(rawData) as {
+            error?: unknown;
+            requestId?: unknown;
+          };
+          const errorMessage =
+            typeof payload.error === "string"
+              ? payload.error
+              : "Coach kon niet reageren.";
+          const errorRequestId =
+            typeof payload.requestId === "string"
+              ? payload.requestId
+              : requestId;
+          throw new Error(`${errorMessage} (requestId: ${errorRequestId})`);
+        }
+      };
+
+      const flushEvent = () => {
+        if (eventDataLines.length === 0) {
+          eventName = "message";
+          return;
+        }
+        const rawData = eventDataLines.join("\n");
+        eventDataLines = [];
+        const currentEvent = eventName;
+        eventName = "message";
+        handleEvent(currentEvent, rawData);
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          buffered += decoder.decode();
+          break;
+        }
+        buffered += decoder.decode(value, { stream: true });
+
+        let lineBreakIndex = buffered.indexOf("\n");
+        while (lineBreakIndex >= 0) {
+          let line = buffered.slice(0, lineBreakIndex);
+          buffered = buffered.slice(lineBreakIndex + 1);
+          if (line.endsWith("\r")) {
+            line = line.slice(0, -1);
+          }
+
+          if (line.length === 0) {
+            flushEvent();
+          } else if (line.startsWith("event:")) {
+            eventName = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            eventDataLines.push(line.slice(5).trimStart());
+          }
+
+          lineBreakIndex = buffered.indexOf("\n");
+        }
+
+        if (streamDone) {
+          await reader.cancel();
+          break;
+        }
+      }
+
+      if (buffered.trim().length > 0) {
+        if (buffered.startsWith("event:")) {
+          const trailingLines = buffered.split(/\r?\n/);
+          for (const line of trailingLines) {
+            if (line.startsWith("event:")) {
+              eventName = line.slice(6).trim();
+            } else if (line.startsWith("data:")) {
+              eventDataLines.push(line.slice(5).trimStart());
+            }
+          }
+        }
+        flushEvent();
+      }
+
+      if (!streamDone) {
+        throw new Error("Stream onverwacht beëindigd.");
+      }
     } catch (sendError) {
       const activeRequest = activeCoachRequestsRef.current[clientId];
       if (activeRequest?.requestId !== requestId) {
@@ -976,13 +1155,34 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       }
 
       const isAbortError =
-        sendError instanceof Error && sendError.name === "AbortError";
+        sendError instanceof Error &&
+        (sendError.name === "AbortError" || sendError.message === "Aborted");
       if (!isAbortError) {
+        const shouldFallback =
+          !streamAccepted &&
+          sendError instanceof Error &&
+          (sendError.message === "STREAM_UNAVAILABLE" ||
+            sendError.name === "TypeError" ||
+            sendError.name === "SyntaxError" ||
+            sendError.message === "Stream onverwacht beëindigd.");
+        if (shouldFallback) {
+          try {
+            await runBlockingFallback();
+            toast.error(
+              "Streaming niet beschikbaar, standaard antwoord gebruikt."
+            );
+            return;
+          } catch (fallbackError) {
+            console.error(fallbackError);
+          }
+        }
+
         console.error(sendError);
         removeCoachTempMessages(clientId, userTempId, assistantTempId);
         if (selectedClientId === clientId) {
           setCoachInput(trimmedMessage);
         }
+
         const message =
           sendError instanceof Error
             ? sendError.message

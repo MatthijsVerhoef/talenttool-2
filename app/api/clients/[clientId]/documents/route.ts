@@ -4,14 +4,13 @@ import path from "node:path";
 
 import { NextResponse } from "next/server";
 import JSZip from "jszip";
-import type { UserRole } from "@prisma/client";
 
 import { transcribeAudio } from "@/lib/ai/openai";
 import { uploadToBlob } from "@/lib/blob";
+import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
 import {
   createClientDocument,
   getClientDocuments,
-  getClientForUser,
 } from "@/lib/data/store";
 import { auth } from "@/lib/auth";
 
@@ -24,8 +23,9 @@ interface Params {
 }
 
 export async function GET(request: Request, { params }: Params) {
+  const cookie = request.headers.get("cookie") ?? "";
   const session = await auth.api.getSession({
-    headers: request.headers,
+    headers: { cookie },
   });
 
   if (!session) {
@@ -33,14 +33,17 @@ export async function GET(request: Request, { params }: Params) {
   }
 
   const { clientId } = await params;
-
-  const client = await getClientForUser(
-    clientId,
-    session.user.id,
-    session.user.role as UserRole
-  );
-  if (!client) {
-    return NextResponse.json({ error: "Cliënt niet gevonden." }, { status: 404 });
+  try {
+    await assertCanAccessClient(
+      { id: session.user.id, role: session.user.role },
+      clientId,
+      { route: "/api/clients/[clientId]/documents", clientId },
+    );
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    throw error;
   }
 
   const documents = await getClientDocuments(clientId);
@@ -48,8 +51,9 @@ export async function GET(request: Request, { params }: Params) {
 }
 
 export async function POST(request: Request, { params }: Params) {
+  const cookie = request.headers.get("cookie") ?? "";
   const session = await auth.api.getSession({
-    headers: request.headers,
+    headers: { cookie },
   });
 
   if (!session) {
@@ -57,13 +61,17 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const { clientId } = await params;
-  const client = await getClientForUser(
-    clientId,
-    session.user.id,
-    session.user.role as UserRole
-  );
-  if (!client) {
-    return NextResponse.json({ error: "Cliënt niet gevonden." }, { status: 404 });
+  try {
+    await assertCanAccessClient(
+      { id: session.user.id, role: session.user.role },
+      clientId,
+      { route: "/api/clients/[clientId]/documents", clientId },
+    );
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    throw error;
   }
 
   const formData = await request.formData();

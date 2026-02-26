@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import type { UserRole } from "@prisma/client";
 
 import { auth } from "@/lib/auth";
+import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
 import { deleteFromBlob } from "@/lib/blob";
 import {
   deleteClientDocumentById,
   getClientDocumentById,
   getClientDocuments,
-  getClientForUser,
 } from "@/lib/data/store";
 
 interface RouteParams {
@@ -18,8 +17,9 @@ interface RouteParams {
 }
 
 export async function DELETE(request: Request, { params }: RouteParams) {
+  const cookie = request.headers.get("cookie") ?? "";
   const session = await auth.api.getSession({
-    headers: request.headers,
+    headers: { cookie },
   });
 
   if (!session) {
@@ -35,13 +35,17 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     );
   }
 
-  const client = await getClientForUser(
-    clientId,
-    session.user.id,
-    session.user.role as UserRole,
-  );
-  if (!client) {
-    return NextResponse.json({ error: "Cliënt niet gevonden." }, { status: 404 });
+  try {
+    await assertCanAccessClient(
+      { id: session.user.id, role: session.user.role },
+      clientId,
+      { route: "/api/clients/[clientId]/documents/[documentId]", clientId },
+    );
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    throw error;
   }
 
   const document = await getClientDocumentById(documentId);

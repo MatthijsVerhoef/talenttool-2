@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { assertCanAccessClient, ForbiddenError, isAdmin } from "@/lib/authz";
 import { updateClientAvatar, updateClientProfile } from "@/lib/data/store";
 import { isCoachUser } from "@/lib/data/users";
 
@@ -11,13 +12,17 @@ type RouteContext = {
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const cookie = request.headers.get("cookie") ?? "";
   const session = await auth.api.getSession({
-    headers: request.headers,
+    headers: { cookie },
   });
 
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Niet geautoriseerd" }, { status: 403 });
+  if (!session) {
+    return NextResponse.json({ error: "Niet geautoriseerd" }, { status: 401 });
   }
+
+  const user = { id: session.user.id, role: session.user.role };
+  const admin = isAdmin(user);
 
   const payload = await request.json().catch(() => null);
   const params = await context.params;
@@ -32,6 +37,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       { error: "Client ID ontbreekt" },
       { status: 400 }
     );
+  }
+
+  if (!admin) {
+    try {
+      await assertCanAccessClient(user, clientId, {
+        route: "/api/clients/[clientId]",
+        clientId,
+      });
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        return NextResponse.json({ error: error.message }, { status: 403 });
+      }
+      throw error;
+    }
   }
 
   if (!payload || typeof payload !== "object") {
@@ -56,6 +75,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     payload,
     "coachId"
   );
+
+  if (!admin && hasCoachUpdate) {
+    return NextResponse.json(
+      { error: "Alleen admins mogen de coachtoewijzing wijzigen." },
+      { status: 403 },
+    );
+  }
 
   let nextCoachId: string | null | undefined = undefined;
   if (hasCoachUpdate) {

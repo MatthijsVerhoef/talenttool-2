@@ -88,3 +88,20 @@ LIMIT 5;
 ```
 
 5. Confirm `GET /api/prompts/{coach|overseer|report}` requires authentication and responses include `x-request-id`.
+
+## Coach SSE streaming verification
+
+1. Start app with `npm run dev`.
+2. Open dashboard and send a coach chat message.
+3. Confirm the assistant bubble updates incrementally (token-by-token/chunked text), not only at the end.
+4. In server logs, confirm events appear for `/api/coach/[clientId]/stream` with the same `requestId`.
+5. Temporarily break/disable the stream route and send again; confirm UI falls back to `/api/coach/[clientId]` and shows a fallback toast.
+
+## Client access authz verification
+
+1. Login as Coach A and call `GET /api/clients`; confirm only Coach A clients are returned.
+2. Login as Coach A and call `GET /api/clients/{coachBClientId}/documents`; confirm `403`.
+3. Login as Coach A and call `POST /api/clients/{coachBClientId}/report`; confirm `403`.
+4. Login as Coach A and call `POST /api/coach/{coachBClientId}` (or `/stream`); confirm `403`.
+5. Login as Coach A and call `GET /api/clients/{coachAClientId}/documents`; confirm `200`.
+6. Login as Admin and repeat steps 2-4 with the same client IDs; confirm `200`.

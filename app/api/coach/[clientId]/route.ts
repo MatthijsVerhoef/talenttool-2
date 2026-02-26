@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import type { UserRole } from "@prisma/client";
 
 import { runCoachAgent } from "@/lib/agents/service";
 import { OpenAITimeoutError } from "@/lib/ai/openai";
 import { auth } from "@/lib/auth";
-import { getClientForUser, getSessionWindow } from "@/lib/data/store";
+import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
+import { getSessionWindow } from "@/lib/data/store";
 import {
   getRequestId,
   logError,
@@ -61,24 +61,31 @@ export async function GET(request: Request, { params }: Params) {
     }
 
     const { clientId } = await params;
-    const userRole = session.user.role as UserRole;
-    const client = await getClientForUser(clientId, session.user.id, userRole);
-    if (!client) {
-      const durationMs = Date.now() - startedAt;
-      logInfo("api.coach.get.end", {
-        requestId,
-        route,
-        method: "GET",
-        userId: session.user.id,
+    try {
+      await assertCanAccessClient(
+        { id: session.user.id, role: session.user.role },
         clientId,
-        status: 404,
-        durationMs,
-      });
-      return jsonWithRequestId(
-        requestId,
-        { error: "Cliënt niet gevonden." },
-        { status: 404 },
+        { requestId, route, clientId },
       );
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        const durationMs = Date.now() - startedAt;
+        logInfo("api.coach.get.end", {
+          requestId,
+          route,
+          method: "GET",
+          userId: session.user.id,
+          clientId,
+          status: 403,
+          durationMs,
+        });
+        return jsonWithRequestId(
+          requestId,
+          { error: error.message },
+          { status: 403 },
+        );
+      }
+      throw error;
     }
 
     const history = await getSessionWindow(session.user.id, clientId, 50);
@@ -162,24 +169,31 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const { clientId } = await params;
-    const userRole = session.user.role as UserRole;
-    const client = await getClientForUser(clientId, session.user.id, userRole);
-    if (!client) {
-      const durationMs = Date.now() - startedAt;
-      logInfo("api.coach.post.end", {
-        requestId,
-        route,
-        method: "POST",
-        userId: session.user.id,
+    try {
+      await assertCanAccessClient(
+        { id: session.user.id, role: session.user.role },
         clientId,
-        status: 404,
-        durationMs,
-      });
-      return jsonWithRequestId(
-        requestId,
-        { error: "Cliënt niet gevonden." },
-        { status: 404 },
+        { requestId, route, clientId },
       );
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        const durationMs = Date.now() - startedAt;
+        logInfo("api.coach.post.end", {
+          requestId,
+          route,
+          method: "POST",
+          userId: session.user.id,
+          clientId,
+          status: 403,
+          durationMs,
+        });
+        return jsonWithRequestId(
+          requestId,
+          { error: error.message },
+          { status: 403 },
+        );
+      }
+      throw error;
     }
 
     const body = await request.json();
@@ -217,7 +231,7 @@ export async function POST(request: Request, { params }: Params) {
       }),
     );
 
-    const history = (await getSessionWindow(session.user.id, clientId)) ?? [];
+    const updatedHistory = (await getSessionWindow(session.user.id, clientId)) ?? [];
     const durationMs = Date.now() - startedAt;
     logInfo("api.coach.post.end", {
       requestId,
@@ -230,7 +244,7 @@ export async function POST(request: Request, { params }: Params) {
       replyLength: result.reply.length,
       status: 200,
       durationMs,
-      historyCount: history.length,
+      historyCount: updatedHistory.length,
       responseId: result.responseId,
     });
 
@@ -239,7 +253,7 @@ export async function POST(request: Request, { params }: Params) {
       reply: result.reply,
       responseId: result.responseId,
       usage: result.usage,
-      history,
+      history: updatedHistory,
     });
   } catch (error) {
     const durationMs = Date.now() - startedAt;

@@ -61,15 +61,19 @@ export interface AgentRunResult {
   };
 }
 
-export async function runAgentCompletion(
-  options: RunAgentOptions,
-): Promise<AgentRunResult> {
-  const client = getOpenAIClient();
-  const timeoutMs = Number.isFinite(options.timeoutMs)
-    ? Math.max(1, Number(options.timeoutMs))
-    : OPENAI_TIMEOUT_MS;
+export interface RunAgentStreamOptions extends RunAgentOptions {
+  onDelta: (delta: string) => void | Promise<void>;
+  signal?: AbortSignal;
+}
 
-  const systemContent = options.messages
+function resolveTimeoutMs(timeoutMs?: number) {
+  return Number.isFinite(timeoutMs)
+    ? Math.max(1, Number(timeoutMs))
+    : OPENAI_TIMEOUT_MS;
+}
+
+function buildConversation(messages: { role: ChatRole; content: string }[]) {
+  const systemContent = messages
     .filter((message) => message.role === "system")
     .map((message) => message.content)
     .filter((content) => content.trim().length > 0)
@@ -84,21 +88,36 @@ export async function runAgentCompletion(
           },
         ]
       : []),
-    ...options.messages
+    ...messages
       .filter((message) => message.role !== "system")
       .map((message) => ({
         role: message.role,
         content: message.content,
       })),
-  ].filter((entry) => typeof entry.content === "string" && entry.content.trim().length > 0);
+  ].filter(
+    (entry) => typeof entry.content === "string" && entry.content.trim().length > 0,
+  );
 
+  return conversation;
+}
+
+function buildRequestPayload(options: RunAgentOptions) {
   const requestPayload: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
     model: options.model,
-    input: conversation,
+    input: buildConversation(options.messages),
   };
   if (typeof options.temperature === "number") {
     requestPayload.temperature = options.temperature;
   }
+  return requestPayload;
+}
+
+export async function runAgentCompletion(
+  options: RunAgentOptions,
+): Promise<AgentRunResult> {
+  const client = getOpenAIClient();
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
+  const requestPayload = buildRequestPayload(options);
 
   logInfo("openai.start", {
     requestId: options.requestId ?? null,
@@ -171,6 +190,123 @@ export async function runAgentCompletion(
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export async function runAgentCompletionStream(
+  options: RunAgentStreamOptions,
+): Promise<AgentRunResult> {
+  const client = getOpenAIClient();
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
+  const requestPayload = buildRequestPayload(options);
+
+  logInfo("openai.start", {
+    requestId: options.requestId ?? null,
+    operation: options.operation ?? null,
+    model: options.model,
+    timeoutMs,
+    inputMessageCount: options.messages.length,
+    inputCharCount: options.messages.reduce(
+      (total, message) => total + message.content.length,
+      0,
+    ),
+    stream: true,
+  });
+
+  const startedAt = Date.now();
+  let timedOut = false;
+  let abortedByCaller = false;
+  let fullText = "";
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  let abortActiveStream: (() => void) | null = null;
+
+  const onCallerAbort = () => {
+    abortedByCaller = true;
+    abortActiveStream?.();
+  };
+  options.signal?.addEventListener("abort", onCallerAbort, { once: true });
+
+  try {
+    await maybeStall(options.signal ?? new AbortController().signal);
+    const streamParams =
+      requestPayload as unknown as Parameters<typeof client.responses.stream>[0];
+    const stream = client.responses.stream(streamParams);
+    abortActiveStream = () => stream.abort();
+    if (options.signal?.aborted) {
+      abortedByCaller = true;
+      stream.abort();
+    }
+    timeout = setTimeout(() => {
+      timedOut = true;
+      stream.abort();
+    }, timeoutMs);
+
+    for await (const event of stream) {
+      if (event.type === "response.output_text.delta" && event.delta) {
+        fullText += event.delta;
+        await options.onDelta(event.delta);
+      }
+    }
+
+    const response = await stream.finalResponse();
+    const outputText = fullText.trim();
+    const durationMs = Date.now() - startedAt;
+
+    logInfo("openai.success", {
+      requestId: options.requestId ?? null,
+      operation: options.operation ?? null,
+      model: options.model,
+      durationMs,
+      responseId: response.id,
+      totalTokens: response.usage?.total_tokens,
+      inputTokens: response.usage?.input_tokens,
+      outputTokens: response.usage?.output_tokens,
+      outputCharCount: outputText.length,
+      stream: true,
+    });
+
+    return {
+      outputText,
+      responseId: response.id,
+      usage: {
+        totalTokens: response.usage?.total_tokens,
+        inputTokens: response.usage?.input_tokens,
+        outputTokens: response.usage?.output_tokens,
+      },
+    };
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    if (timedOut) {
+      const timeoutError = new OpenAITimeoutError(timeoutMs, options.operation);
+      logError("openai.timeout", {
+        requestId: options.requestId ?? null,
+        operation: options.operation ?? null,
+        model: options.model,
+        timeoutMs,
+        durationMs,
+        stream: true,
+      });
+      throw timeoutError;
+    }
+
+    if (abortedByCaller || options.signal?.aborted) {
+      throw new Error("Aborted");
+    }
+
+    logError("openai.error", {
+      requestId: options.requestId ?? null,
+      operation: options.operation ?? null,
+      model: options.model,
+      durationMs,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stream: true,
+    });
+    throw error;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    options.signal?.removeEventListener("abort", onCallerAbort);
   }
 }
 

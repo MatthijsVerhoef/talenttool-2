@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { UserRole } from "@prisma/client";
 
 import { runOverseerAgent } from "@/lib/agents/service";
 import { OpenAITimeoutError } from "@/lib/ai/openai";
 import { auth } from "@/lib/auth";
 import {
-  assertCoachOwnsClient,
-  getClient,
+  assertCanAccessClient,
+  ForbiddenError,
+  isAdmin,
+  isCoach,
+} from "@/lib/authz";
+import {
   getOverseerWindow,
   getOwnedAgentMessage,
   getOwnedCoachingSession,
@@ -54,8 +57,8 @@ export async function GET(request: Request) {
       );
     }
 
-    const userRole = session.user.role as UserRole;
-    if (userRole !== UserRole.ADMIN && userRole !== UserRole.COACH) {
+    const user = { id: session.user.id, role: session.user.role };
+    if (!isAdmin(user) && !isCoach(user)) {
       const durationMs = Date.now() - startedAt;
       logInfo("api.overseer.get.end", {
         requestId,
@@ -134,8 +137,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const userRole = session.user.role as UserRole;
-    if (userRole !== UserRole.ADMIN && userRole !== UserRole.COACH) {
+    const user = { id: session.user.id, role: session.user.role };
+    if (!isAdmin(user) && !isCoach(user)) {
       const durationMs = Date.now() - startedAt;
       logInfo("api.overseer.post.end", {
         requestId,
@@ -196,31 +199,36 @@ export async function POST(request: Request) {
     }
 
     if (clientId) {
-      const hasClientAccess =
-        userRole === UserRole.ADMIN
-          ? Boolean(await getClient(clientId))
-          : await assertCoachOwnsClient(coachUserId, clientId);
-      if (!hasClientAccess) {
-        const durationMs = Date.now() - startedAt;
-        logInfo("api.overseer.post.end", {
+      try {
+        await assertCanAccessClient(user, clientId, {
           requestId,
           route,
-          method: "POST",
-          userId: session.user.id,
-          coachUserId,
-          conversationId: conversationId ?? null,
           clientId,
-          coachingSessionId: coachingSessionId ?? null,
-          sourceAgentMessageId: sourceAgentMessageId ?? null,
-          status: 403,
-          durationMs,
-          reason: "client_access_denied",
         });
-        return jsonWithRequestId(
-          requestId,
-          { error: "Geen toegang tot deze cliënt." },
-          { status: 403 },
-        );
+      } catch (error) {
+        if (error instanceof ForbiddenError) {
+          const durationMs = Date.now() - startedAt;
+          logInfo("api.overseer.post.end", {
+            requestId,
+            route,
+            method: "POST",
+            userId: session.user.id,
+            coachUserId,
+            conversationId: conversationId ?? null,
+            clientId,
+            coachingSessionId: coachingSessionId ?? null,
+            sourceAgentMessageId: sourceAgentMessageId ?? null,
+            status: 403,
+            durationMs,
+            reason: "client_access_denied",
+          });
+          return jsonWithRequestId(
+            requestId,
+            { error: error.message },
+            { status: 403 },
+          );
+        }
+        throw error;
       }
     }
 

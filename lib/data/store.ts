@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 
 import { DEFAULT_COACH_MODEL, DEFAULT_OVERSEER_MODEL } from "@/lib/agents/models";
+import { scopedClientWhere } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { sha256 } from "@/lib/security/hash";
 
@@ -124,19 +125,34 @@ async function ensureSession(userId: string, clientId: string) {
   });
 }
 
+export async function getOrCreateCoachingSession(
+  userId: string,
+  clientId: string,
+): Promise<{ id: string; ownerUserId: string; clientId: string } | null> {
+  const session = await ensureSession(userId, clientId);
+  if (!session) {
+    return null;
+  }
+  return {
+    id: session.id,
+    ownerUserId: session.ownerUserId,
+    clientId: session.clientId,
+  };
+}
+
 export async function getClients(options?: {
   userId?: string;
   role?: UserRole;
 }): Promise<ClientProfile[]> {
-  if (options?.role && options.role !== UserRole.ADMIN && !options?.userId) {
+  if (!options?.userId || !options.role) {
     return [];
   }
 
   const clients = await prisma.client.findMany({
-    where:
-      options?.role && options.role !== UserRole.ADMIN
-        ? { coachId: options.userId }
-        : undefined,
+    where: scopedClientWhere({
+      id: options.userId,
+      role: options.role,
+    }),
     include: {
       goals: true,
     },
