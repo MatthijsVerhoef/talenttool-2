@@ -18,7 +18,7 @@ function getAuthBaseUrl() {
     process.env.NEXT_PUBLIC_SITE_URL;
 
   if (!configured) {
-    return "http://localhost:3000";
+    return "http://localhost:3003";
   }
 
   if (configured.startsWith("http://") || configured.startsWith("https://")) {
