@@ -1,16 +1,14 @@
-import { unlink, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-
 import { NextResponse } from "next/server";
 
-import { transcribeAudio } from "@/lib/ai/openai";
 import { uploadToBlob } from "@/lib/blob";
+import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
 import {
   createClientDocument,
-  getClient,
   getClientDocuments,
 } from "@/lib/data/store";
+import { extractDocumentContent } from "@/lib/documents/extract";
+import { getRequestId, logError, logInfo } from "@/lib/observability";
+import { auth } from "@/lib/auth";
 
 interface Params {
   params: Promise<{
@@ -18,35 +16,133 @@ interface Params {
   }>;
 }
 
-export async function GET(_: Request, { params }: Params) {
-  const { clientId } = await params;
+function jsonWithRequestId(
+  requestId: string,
+  body: unknown,
+  init?: ResponseInit,
+) {
+  const response = NextResponse.json(body, init);
+  response.headers.set("x-request-id", requestId);
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
 
-  const client = await getClient(clientId);
-  if (!client) {
-    return NextResponse.json({ error: "Cliënt niet gevonden." }, { status: 404 });
+export async function GET(request: Request, { params }: Params) {
+  const requestId = getRequestId(request);
+  const route = "/api/clients/[clientId]/documents";
+  const startedAt = Date.now();
+  const cookie = request.headers.get("cookie") ?? "";
+  const session = await auth.api.getSession({
+    headers: { cookie },
+  });
+
+  if (!session) {
+    return jsonWithRequestId(
+      requestId,
+      { error: "Niet geautoriseerd" },
+      { status: 401 },
+    );
+  }
+
+  const { clientId } = await params;
+  try {
+    await assertCanAccessClient(
+      { id: session.user.id, role: session.user.role },
+      clientId,
+      { route: "/api/clients/[clientId]/documents", clientId },
+    );
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return jsonWithRequestId(requestId, { error: error.message }, { status: 403 });
+    }
+    throw error;
   }
 
   const documents = await getClientDocuments(clientId);
-  return NextResponse.json({ documents });
+  const extractionStatusCounts = documents.reduce<Record<string, number>>(
+    (acc, document) => {
+      const key = document.extractionStatus ?? "UNKNOWN";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
+  const docsWithNonEmptyContentCount = documents.filter(
+    (document) => Boolean(document.content?.trim()),
+  ).length;
+  logInfo("documents.list.end", {
+    requestId,
+    route,
+    userId: session.user.id,
+    clientId,
+    status: 200,
+    durationMs: Date.now() - startedAt,
+    documentsCount: documents.length,
+    docsWithNonEmptyContentCount,
+    extractionStatusCounts,
+  });
+  return jsonWithRequestId(requestId, { documents });
 }
 
 export async function POST(request: Request, { params }: Params) {
+  const requestId = getRequestId(request);
+  const route = "/api/clients/[clientId]/documents";
+  const startedAt = Date.now();
+  const cookie = request.headers.get("cookie") ?? "";
+  const session = await auth.api.getSession({
+    headers: { cookie },
+  });
+
+  if (!session) {
+    return jsonWithRequestId(
+      requestId,
+      { error: "Niet geautoriseerd" },
+      { status: 401 },
+    );
+  }
+
   const { clientId } = await params;
-  const client = await getClient(clientId);
-  if (!client) {
-    return NextResponse.json({ error: "Cliënt niet gevonden." }, { status: 404 });
+  try {
+    await assertCanAccessClient(
+      { id: session.user.id, role: session.user.role },
+      clientId,
+      { requestId, route, clientId },
+    );
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return jsonWithRequestId(requestId, { error: error.message }, { status: 403 });
+    }
+    throw error;
   }
 
   const formData = await request.formData();
   const file = formData.get("file");
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Bestand is verplicht." }, { status: 400 });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Bestand is verplicht." },
+      { status: 400 },
+    );
   }
 
   if (file.size === 0) {
-    return NextResponse.json({ error: "Bestand is leeg." }, { status: 400 });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Bestand is leeg." },
+      { status: 400 },
+    );
   }
+
+  logInfo("documents.upload.start", {
+    requestId,
+    route,
+    userId: session.user.id,
+    clientId,
+    filename: file.name,
+    mimeType: file.type || "application/octet-stream",
+    bytes: file.size,
+  });
 
   const storedName = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
   const blobKey = `${clientId}/${storedName}`;
@@ -54,25 +150,12 @@ export async function POST(request: Request, { params }: Params) {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  const isAudio = isAudioFile(file.name, file.type);
-  let content: string | undefined;
-  let audioDuration: number | undefined;
-
-  if (isAudio) {
-    const tempPath = path.join(os.tmpdir(), storedName);
-    await writeFile(tempPath, buffer);
-    try {
-      const transcription = await transcribeAudio(tempPath, file.type);
-      content = transcription.text?.trim() || undefined;
-      audioDuration = transcription.duration;
-    } catch (error) {
-      console.error("Audio transcription failed", error);
-    } finally {
-      await unlink(tempPath).catch(() => undefined);
-    }
-  } else if (shouldStoreContent(file.type, file.name)) {
-    content = buffer.toString("utf-8").slice(0, 8000);
-  }
+  const extraction = await extractDocumentContent({
+    buffer,
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    requestId,
+  });
 
   try {
     const blob = await uploadToBlob(
@@ -87,32 +170,46 @@ export async function POST(request: Request, { params }: Params) {
       storedName: blob.url,
       mimeType: file.type || "application/octet-stream",
       size: file.size,
-      content,
-      kind: isAudio ? "AUDIO" : "TEXT",
-      audioDuration,
+      content: extraction.content,
+      kind: extraction.kind,
+      audioDuration: extraction.audioDuration,
+      extractionStatus: extraction.extractionStatus,
+      extractionError: extraction.extractionError ?? null,
+      extractedAt: extraction.extractedAt,
     });
   } catch (error) {
-    console.error("Blob upload failed", error);
-    return NextResponse.json(
+    const durationMs = Date.now() - startedAt;
+    logError("documents.upload.error", {
+      requestId,
+      route,
+      userId: session.user.id,
+      clientId,
+      filename: file.name,
+      bytes: file.size,
+      durationMs,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    return jsonWithRequestId(
+      requestId,
       { error: "Uploaden is mislukt. Controleer blob-configuratie." },
       { status: 500 },
     );
   }
 
   const documents = await getClientDocuments(clientId);
-  return NextResponse.json({ documents });
-}
-
-function shouldStoreContent(mimeType: string, fileName: string) {
-  if (mimeType?.startsWith("text/") || mimeType === "application/json") {
-    return true;
-  }
-  return /\.(md|txt|json|csv)$/i.test(fileName);
-}
-
-function isAudioFile(fileName: string, mimeType?: string) {
-  if (mimeType?.startsWith("audio/")) {
-    return true;
-  }
-  return /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(fileName);
+  const durationMs = Date.now() - startedAt;
+  logInfo("documents.upload.end", {
+    requestId,
+    route,
+    userId: session.user.id,
+    clientId,
+    filename: file.name,
+    bytes: file.size,
+    extractionStatus: extraction.extractionStatus,
+    extractionError: extraction.extractionError ?? null,
+    extractedChars: extraction.content?.length ?? 0,
+    status: 200,
+    durationMs,
+  });
+  return jsonWithRequestId(requestId, { documents });
 }

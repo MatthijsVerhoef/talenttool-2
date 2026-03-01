@@ -18,13 +18,21 @@ model Client {
   name      String
   focusArea String
   summary   String   @db.Text
+  avatarUrl String?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
+  coach     User?              @relation("ClientCoach", fields: [coachId], references: [id], onDelete: SetNull)
+  coachId   String?
 
   sessions  CoachingSession[]
   goals     ClientGoal[]
   documents ClientDocument[]
+  documentChunks DocumentChunk[]
   directives CoachDirective[]
+  reports   ClientReport[]
+  overseerMessages OverseerMessage[]
+
+  @@index([coachId])
 }
 
 model ClientGoal {
@@ -39,13 +47,17 @@ model CoachingSession {
   id        String         @id @default(cuid())
   client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId  String
+  ownerUser User           @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  ownerUserId String
   title     String         @default("Default Session")
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
   messages  AgentMessage[]
+  overseerMessages OverseerMessage[]
 
-  @@index([clientId])
+  @@unique([ownerUserId, clientId])
+  @@index([clientId, ownerUserId])
 }
 
 model AgentMessage {
@@ -57,17 +69,31 @@ model AgentMessage {
   content   String   @db.Text
   meta      Json?
   createdAt DateTime         @default(now())
+  overseerSourceMessages OverseerMessage[]
 
   @@index([sessionId])
 }
 
 model OverseerMessage {
   id        String   @id @default(cuid())
+  coachUser   User   @relation("OverseerCoach", fields: [coachUserId], references: [id], onDelete: Cascade)
+  coachUserId String
+  client      Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId    String?
+  coachingSession   CoachingSession? @relation(fields: [coachingSessionId], references: [id], onDelete: SetNull)
+  coachingSessionId String?
+  sourceAgentMessage   AgentMessage? @relation(fields: [sourceAgentMessageId], references: [id], onDelete: SetNull)
+  sourceAgentMessageId String?
   role      String
   source    MessageSource    @default(AI)
   content   String   @db.Text
   meta      Json?
   createdAt DateTime @default(now())
+
+  @@index([coachUserId, createdAt])
+  @@index([clientId])
+  @@index([coachingSessionId])
+  @@index([sourceAgentMessageId])
 }
 
 model ClientDocument {
@@ -80,10 +106,30 @@ model ClientDocument {
   size           Int
   kind           DocumentKind @default(TEXT)
   content        String?      @db.Text
+  extractionStatus DocumentExtractionStatus @default(PENDING)
+  extractionError  String?     @db.Text
+  extractedAt      DateTime?
   audioDuration  Float?
   createdAt      DateTime     @default(now())
 
+  chunks         DocumentChunk[]
+
   @@index([clientId])
+}
+
+model DocumentChunk {
+  id         String         @id @default(cuid())
+  document   ClientDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId String
+  client     Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId   String
+  chunkIndex Int
+  text       String         @db.Text
+  createdAt  DateTime       @default(now())
+
+  @@unique([documentId, chunkIndex])
+  @@index([clientId, createdAt])
+  @@index([documentId])
 }
 enum MessageSource {
   AI
@@ -95,6 +141,27 @@ enum DocumentKind {
   AUDIO
 }
 
+enum DocumentExtractionStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+enum AgentKind {
+  COACH
+  OVERSEER
+}
+
+enum ResponseLayerTarget {
+  ALL
+  COACH
+  OVERSEER
+}
+
+enum ResponseLayerMode {
+  REWRITE
+}
+
 model CoachDirective {
   id         String   @id @default(cuid())
   client     Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -104,9 +171,166 @@ model CoachDirective {
   createdBy  MessageSource @default(AI)
 }
 
+model ClientReport {
+  id        String   @id @default(cuid())
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+}
+
 model SystemPrompt {
   id        String   @id
   content   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AgentFeedback {
+  id             String    @id @default(cuid())
+  agentType      AgentKind
+  messageId      String
+  messageContent String   @db.Text
+  feedback       String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+
+  @@index([agentType])
+}
+
+model SystemSetting {
+  id        String   @id
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AiResponseLayer {
+  id            String             @id @default(cuid())
+  name          String
+  description   String             @db.Text
+  instructions  String             @db.Text
+  target        ResponseLayerTarget @default(ALL)
+  mode          ResponseLayerMode   @default(REWRITE)
+  model         String
+  temperature   Float              @default(0.2)
+  position      Int                @default(0)
+  isEnabled     Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String
+  email         String     @unique
+  emailVerified Boolean    @default(false)
+  image         String?
+  avatarAlt     String?
+  role          UserRole   @default(COACH)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+  feedback AgentFeedback[]
+  promptAudits PromptAudit[]
+  coachingSessions CoachingSession[]
+  overseerMessages OverseerMessage[] @relation("OverseerCoach")
+  coachedClients Client[] @relation("ClientCoach")
+  createdInvites  UserInvite[] @relation("UserInviteCreatedBy")
+  acceptedInvites UserInvite[] @relation("UserInviteAcceptedBy")
+}
+
+model PromptAudit {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  actorUser   User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  actorUserId String
+  promptKey   String
+  action      String
+  oldHash     String?
+  newHash     String?
+  oldLength   Int?
+  newLength   Int?
+  requestId   String?
+  ip          String?
+
+  @@index([promptKey, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  ipAddress  String?
+  userAgent  String?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@index([userId])
+}
+
+model UserInvite {
+  id            String   @id @default(cuid())
+  email         String
+  token         String   @unique
+  role          UserRole @default(COACH)
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  createdById   String?
+  acceptedById  String?
+
+  createdBy User? @relation("UserInviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  acceptedBy User? @relation("UserInviteAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([token])
+}
+
+model Account {
+  id                      String   @id @default(cuid())
+  accountId               String
+  providerId              String
+  accessToken             String?
+  refreshToken            String?
+  idToken                 String?
+  accessTokenExpiresAt    DateTime?
+  refreshTokenExpiresAt   DateTime?
+  scope                   String?
+  password                String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+enum UserRole {
+  ADMIN
+  COACH
 }
