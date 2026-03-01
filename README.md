@@ -140,6 +140,30 @@ ORDER BY chunk_count DESC
 LIMIT 20;
 ```
 
+### Document debug endpoint (dev only)
+
+- `GET /api/clients/{clientId}/documents/debug` (coach owner or admin only)
+- Disabled in production (`404`)
+- Returns metadata only (no extracted text):
+  - `documentId`, `filename`, `mime`, `size`
+  - `hasExtractedText`, `extractedLength`
+  - `chunkCount` (or `null` if chunk table/schema is unavailable)
+  - `extractionStatus`, `extractionError`
+  - `updatedAt`
+
+### Debug response metadata
+
+When `DEBUG_DOC_CONTEXT=1`, coach/report responses include:
+
+- `documentContextSources`
+- `docContext`:
+  - `docsConsidered`
+  - `chunksSelected`
+  - `totalChars`
+  - `sources`
+
+For streaming, this appears in the `done` SSE event payload.
+
 ## Auth debugging
 
 Enable debug mode locally:

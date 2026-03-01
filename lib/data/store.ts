@@ -79,6 +79,27 @@ export interface DocumentContextSource {
   chunkIndex: number;
 }
 
+export interface ClientDocumentContextResult {
+  contextText: string;
+  sources: DocumentContextSource[];
+  docsConsidered: number;
+  chunksConsidered: number;
+  totalChars: number;
+}
+
+export interface ClientDocumentDebugRecord {
+  documentId: string;
+  filename: string;
+  mime: string;
+  size: number;
+  hasExtractedText: boolean;
+  extractedLength: number;
+  chunkCount: number | null;
+  extractionStatus: DocumentExtractionStatus;
+  extractionError: string | null;
+  updatedAt: string;
+}
+
 export type DocumentKind = "TEXT" | "AUDIO";
 
 export type ResponseLayerMode = PrismaResponseLayerMode;
@@ -113,6 +134,7 @@ const DOCUMENT_CONTEXT_TOP_K = Number(process.env.DOCUMENT_CONTEXT_TOP_K ?? "10"
 const DEFAULT_DOCUMENT_CONTEXT_BUDGET_CHARS = Number(
   process.env.DOCUMENT_CONTEXT_BUDGET_CHARS ?? "6000",
 );
+let supportsExtendedClientDocumentSchema: boolean | null = null;
 
 export type PromptKey = "coach" | "overseer" | "report";
 
@@ -653,6 +675,16 @@ export async function getClientDocuments(
   clientId: string,
   limit = 20,
 ): Promise<ClientDocument[]> {
+  if (supportsExtendedClientDocumentSchema === false) {
+    const documents = await prisma.clientDocument.findMany({
+      where: { clientId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: LEGACY_DOCUMENT_SELECT,
+    });
+    return documents.map(mapLegacyDocument);
+  }
+
   try {
     const documents = await prisma.clientDocument.findMany({
       where: { clientId },
@@ -660,11 +692,13 @@ export async function getClientDocuments(
       take: limit,
     });
 
+    markExtendedClientDocumentSchemaSupported();
     return documents.map(mapDocument);
   } catch (error) {
     if (!isMissingDocumentContextSchemaError(error)) {
       throw error;
     }
+    markExtendedClientDocumentSchemaMissing();
 
     logInfo("documents.schema_fallback", {
       op: "getClientDocuments",
@@ -782,6 +816,14 @@ async function getDocumentAvailabilityStats(clientId: string): Promise<{
     },
   });
 
+  if (supportsExtendedClientDocumentSchema === false) {
+    return {
+      docsTotalCount,
+      docsReadyCount: null,
+      docsWithContentCount,
+    };
+  }
+
   try {
     const docsReadyCount = await prisma.clientDocument.count({
       where: {
@@ -789,6 +831,7 @@ async function getDocumentAvailabilityStats(clientId: string): Promise<{
         extractionStatus: DocumentExtractionStatus.READY,
       },
     });
+    markExtendedClientDocumentSchemaSupported();
     return {
       docsTotalCount,
       docsReadyCount,
@@ -798,6 +841,7 @@ async function getDocumentAvailabilityStats(clientId: string): Promise<{
     if (!isMissingDocumentContextSchemaError(error)) {
       throw error;
     }
+    markExtendedClientDocumentSchemaMissing();
     return {
       docsTotalCount,
       docsReadyCount: null,
@@ -834,6 +878,16 @@ function isMissingDocumentContextSchemaError(error: unknown) {
   }
 
   return false;
+}
+
+function markExtendedClientDocumentSchemaSupported() {
+  if (supportsExtendedClientDocumentSchema !== false) {
+    supportsExtendedClientDocumentSchema = true;
+  }
+}
+
+function markExtendedClientDocumentSchemaMissing() {
+  supportsExtendedClientDocumentSchema = false;
 }
 
 function getDocumentChunkDelegate() {
@@ -875,6 +929,24 @@ export async function createClientDocument(input: {
       ? splitDocumentIntoChunks(normalizedContent)
       : [];
 
+  if (supportsExtendedClientDocumentSchema === false) {
+    const document = await prisma.clientDocument.create({
+      data: {
+        clientId: input.clientId,
+        originalName: input.originalName,
+        storedName: input.storedName,
+        mimeType: input.mimeType,
+        size: input.size,
+        content: normalizedContent,
+        kind: input.kind ?? "TEXT",
+        audioDuration:
+          typeof input.audioDuration === "number" ? input.audioDuration : null,
+      },
+      select: LEGACY_DOCUMENT_SELECT,
+    });
+    return mapLegacyDocument(document);
+  }
+
   try {
     const document = await prisma.$transaction(async (tx) => {
       const created = await tx.clientDocument.create({
@@ -907,11 +979,13 @@ export async function createClientDocument(input: {
       return created;
     });
 
+    markExtendedClientDocumentSchemaSupported();
     return mapDocument(document);
   } catch (error) {
     if (!isMissingDocumentContextSchemaError(error)) {
       throw error;
     }
+    markExtendedClientDocumentSchemaMissing();
 
     logInfo("documents.schema_fallback", {
       op: "createClientDocument",
@@ -965,6 +1039,21 @@ export async function updateClientDocumentExtraction(input: {
       ? splitDocumentIntoChunks(normalizedContent)
       : [];
 
+  if (supportsExtendedClientDocumentSchema === false) {
+    const updated = await prisma.clientDocument.update({
+      where: { id: scopedDocument.id },
+      data: {
+        content: normalizedContent ?? null,
+        kind: input.kind,
+        audioDuration:
+          typeof input.audioDuration === "number" ? input.audioDuration : null,
+      },
+      select: LEGACY_DOCUMENT_WITH_CLIENT_SELECT,
+    });
+
+    return mapLegacyDocumentWithClient(updated);
+  }
+
   try {
     const document = await prisma.$transaction(async (tx) => {
       const updated = await tx.clientDocument.update({
@@ -1002,9 +1091,11 @@ export async function updateClientDocumentExtraction(input: {
       return updated;
     });
 
+    markExtendedClientDocumentSchemaSupported();
     return mapDocumentWithClient(document);
   } catch (error) {
     if (isMissingDocumentContextSchemaError(error)) {
+      markExtendedClientDocumentSchemaMissing();
       logInfo("documents.schema_fallback", {
         op: "updateClientDocumentExtraction",
         clientId: input.clientId,
@@ -1040,6 +1131,20 @@ export async function getClientDocumentById(
   documentId: string,
   clientId: string,
 ): Promise<ClientDocumentWithClient | null> {
+  if (supportsExtendedClientDocumentSchema === false) {
+    const document = await prisma.clientDocument.findFirst({
+      where: {
+        id: documentId,
+        clientId,
+      },
+      select: LEGACY_DOCUMENT_WITH_CLIENT_SELECT,
+    });
+    if (!document) {
+      return null;
+    }
+    return mapLegacyDocumentWithClient(document);
+  }
+
   try {
     const document = await prisma.clientDocument.findFirst({
       where: {
@@ -1050,11 +1155,13 @@ export async function getClientDocumentById(
     if (!document) {
       return null;
     }
+    markExtendedClientDocumentSchemaSupported();
     return mapDocumentWithClient(document);
   } catch (error) {
     if (!isMissingDocumentContextSchemaError(error)) {
       throw error;
     }
+    markExtendedClientDocumentSchemaMissing();
 
     logInfo("documents.schema_fallback", {
       op: "getClientDocumentById",
@@ -1092,15 +1199,25 @@ export async function deleteClientDocumentById(
     return null;
   }
 
+  if (supportsExtendedClientDocumentSchema === false) {
+    const document = await prisma.clientDocument.delete({
+      where: { id: scopedDocument.id },
+      select: LEGACY_DOCUMENT_WITH_CLIENT_SELECT,
+    });
+    return mapLegacyDocumentWithClient(document);
+  }
+
   try {
     const document = await prisma.clientDocument.delete({
       where: { id: scopedDocument.id },
     });
+    markExtendedClientDocumentSchemaSupported();
     return mapDocumentWithClient(document);
   } catch (error) {
     if (!isMissingDocumentContextSchemaError(error)) {
       throw error;
     }
+    markExtendedClientDocumentSchemaMissing();
 
     logInfo("documents.schema_fallback", {
       op: "deleteClientDocumentById",
@@ -1124,10 +1241,7 @@ export async function getClientDocumentContext(options: {
   queryText: string;
   budgetChars: number;
   requestId?: string;
-}): Promise<{
-  contextText: string;
-  sources: DocumentContextSource[];
-}> {
+}): Promise<ClientDocumentContextResult> {
   const hasAccess = await canAccessClient(
     { id: options.userId, role: options.role },
     options.clientId,
@@ -1141,7 +1255,13 @@ export async function getClientDocumentContext(options: {
     DEFAULT_DOCUMENT_CONTEXT_BUDGET_CHARS,
   );
   if (budgetChars <= 0) {
-    return { contextText: "", sources: [] };
+    return {
+      contextText: "",
+      sources: [],
+      docsConsidered: 0,
+      chunksConsidered: 0,
+      totalChars: 0,
+    };
   }
   const availability = await getDocumentAvailabilityStats(options.clientId);
   const queryTerms = buildQueryTerms(options.queryText);
@@ -1172,6 +1292,10 @@ export async function getClientDocumentContext(options: {
   let chunks: CandidateChunk[] = [];
 
   try {
+    if (supportsExtendedClientDocumentSchema === false) {
+      throw new Error("DOCUMENT_CONTEXT_SCHEMA_MISSING");
+    }
+
     const documentChunkDelegate = getDocumentChunkDelegate();
     if (!documentChunkDelegate) {
       throw new Error("DOCUMENT_CHUNK_DELEGATE_MISSING");
@@ -1194,6 +1318,7 @@ export async function getClientDocumentContext(options: {
         },
       },
     });
+    markExtendedClientDocumentSchemaSupported();
 
     chunks = storedChunks.map((chunk) => ({
       text: chunk.text,
@@ -1214,14 +1339,32 @@ export async function getClientDocumentContext(options: {
         reason: "document_chunk_delegate_missing",
       });
     }
+    if (error instanceof Error && error.message === "DOCUMENT_CONTEXT_SCHEMA_MISSING") {
+      logInfo("doc_context.fallback", {
+        requestId: options.requestId ?? null,
+        userId: options.userId,
+        clientId: options.clientId,
+        reason: "document_context_schema_marked_missing",
+      });
+    }
 
     if (!isMissingDocumentContextSchemaError(error)) {
-      if (!(error instanceof Error && error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING")) {
+      if (
+        !(
+          error instanceof Error &&
+          (error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING" ||
+            error.message === "DOCUMENT_CONTEXT_SCHEMA_MISSING")
+        )
+      ) {
         throw error;
       }
     }
 
-    if (!(error instanceof Error && error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING")) {
+    if (
+      !(error instanceof Error && error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING") &&
+      !(error instanceof Error && error.message === "DOCUMENT_CONTEXT_SCHEMA_MISSING")
+    ) {
+      markExtendedClientDocumentSchemaMissing();
       logInfo("doc_context.fallback", {
         requestId: options.requestId ?? null,
         userId: options.userId,
@@ -1282,7 +1425,13 @@ export async function getClientDocumentContext(options: {
       totalChars: 0,
       documentIds: [],
     });
-    return { contextText: "", sources: [] };
+    return {
+      contextText: "",
+      sources: [],
+      docsConsidered: 0,
+      chunksConsidered: 0,
+      totalChars: 0,
+    };
   }
 
   const ranked = chunks
@@ -1341,6 +1490,7 @@ export async function getClientDocumentContext(options: {
   }
 
   const contextText = selectedChunks.join("\n\n---\n\n").trim();
+  const docsConsidered = Array.from(new Set(chunks.map((chunk) => chunk.document.id))).length;
   const documentIds = Array.from(new Set(selectedSources.map((source) => source.documentId)));
   const filenames = Array.from(new Set(selectedSources.map((source) => source.filename)));
   logInfo("doc_context.selected", {
@@ -1352,7 +1502,7 @@ export async function getClientDocumentContext(options: {
     docsTotalCount: availability.docsTotalCount,
     docsReadyCount: availability.docsReadyCount,
     docsWithContentCount: availability.docsWithContentCount,
-    docsCount: Array.from(new Set(chunks.map((chunk) => chunk.document.id))).length,
+    docsCount: docsConsidered,
     chunkCount: chunks.length,
     selectedChunkCount: selectedSources.length,
     totalChars: contextText.length,
@@ -1363,7 +1513,62 @@ export async function getClientDocumentContext(options: {
   return {
     contextText,
     sources: selectedSources,
+    docsConsidered,
+    chunksConsidered: chunks.length,
+    totalChars: contextText.length,
   };
+}
+
+export async function getClientDocumentDebugRecords(
+  clientId: string,
+): Promise<ClientDocumentDebugRecord[]> {
+  const documents = await getClientDocuments(clientId, 200);
+  const chunkCounts = new Map<string, number>();
+  let chunkCountsAvailable = false;
+
+  if (supportsExtendedClientDocumentSchema !== false) {
+    const documentChunkDelegate = getDocumentChunkDelegate();
+    if (documentChunkDelegate) {
+      try {
+        const rows = await documentChunkDelegate.findMany({
+          where: { clientId },
+          select: { documentId: true },
+        });
+        markExtendedClientDocumentSchemaSupported();
+        chunkCountsAvailable = true;
+        for (const row of rows) {
+          const current = chunkCounts.get(row.documentId) ?? 0;
+          chunkCounts.set(row.documentId, current + 1);
+        }
+      } catch (error) {
+        if (!isMissingDocumentContextSchemaError(error)) {
+          throw error;
+        }
+        markExtendedClientDocumentSchemaMissing();
+        logInfo("documents.schema_fallback", {
+          op: "getClientDocumentDebugRecords",
+          clientId,
+          reason: "missing_extraction_columns_or_tables",
+        });
+      }
+    }
+  }
+
+  return documents.map((document) => {
+    const extractedLength = document.content?.trim().length ?? 0;
+    return {
+      documentId: document.id,
+      filename: document.originalName,
+      mime: document.mimeType,
+      size: document.size,
+      hasExtractedText: extractedLength > 0,
+      extractedLength,
+      chunkCount: chunkCountsAvailable ? (chunkCounts.get(document.id) ?? 0) : null,
+      extractionStatus: document.extractionStatus,
+      extractionError: document.extractionError ?? null,
+      updatedAt: document.extractedAt ?? document.createdAt,
+    };
+  });
 }
 
 export async function getDocumentSnippets(

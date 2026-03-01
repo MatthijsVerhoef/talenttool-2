@@ -59,6 +59,12 @@ export interface AgentReply {
   reportId?: string;
   createdAt?: string;
   documentContextSources?: DocumentContextSource[];
+  docContext?: {
+    docsConsidered: number;
+    chunksSelected: number;
+    totalChars: number;
+    sources: DocumentContextSource[];
+  };
 }
 
 interface AgentRunContext {
@@ -203,6 +209,12 @@ export async function runCoachAgent(
         responseId: completion.responseId,
         usage: completion.usage,
         documentContextSources: documentContext.sources,
+        docContext: {
+          docsConsidered: documentContext.docsConsidered,
+          chunksSelected: documentContext.sources.length,
+          totalChars: documentContext.totalChars,
+          sources: documentContext.sources,
+        },
       };
     });
 
@@ -466,6 +478,12 @@ export async function generateClientReport(
         reportId: savedReport.id,
         createdAt: savedReport.createdAt,
         documentContextSources: documentContext.sources,
+        docContext: {
+          docsConsidered: documentContext.docsConsidered,
+          chunksSelected: documentContext.sources.length,
+          totalChars: documentContext.totalChars,
+          sources: documentContext.sources,
+        },
       };
     });
 

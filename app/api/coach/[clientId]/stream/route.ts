@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { OpenAITimeoutError, runAgentCompletionStream } from "@/lib/ai/openai";
+import {
+  OpenAIRateLimitError,
+  OpenAITimeoutError,
+  runAgentCompletionStream,
+} from "@/lib/ai/openai";
 import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
 import {
@@ -305,6 +309,8 @@ export async function POST(request: Request, { params }: Params) {
               "<<<CLIENT_DOCUMENT_CONTEXT>>>",
             ),
             documentContextChunkCount: documentContext.sources.length,
+            documentContextDocsConsidered: documentContext.docsConsidered,
+            documentContextChunksConsidered: documentContext.chunksConsidered,
             documentContextDocumentCount: documentIds.length,
             documentContextChars: documentContext.contextText.length,
             documentIds,
@@ -349,7 +355,15 @@ export async function POST(request: Request, { params }: Params) {
             responseId: completion.responseId,
             usage: completion.usage,
             ...(DEBUG_DOC_CONTEXT
-              ? { documentContextSources: documentContext.sources }
+              ? {
+                  documentContextSources: documentContext.sources,
+                  docContext: {
+                    docsConsidered: documentContext.docsConsidered,
+                    chunksSelected: documentContext.sources.length,
+                    totalChars: documentContext.totalChars,
+                    sources: documentContext.sources,
+                  },
+                }
               : {}),
           });
 
@@ -364,6 +378,7 @@ export async function POST(request: Request, { params }: Params) {
             messageLength: message.length,
             replyLength: trimmedReply.length,
             documentContextChunkCount: documentContext.sources.length,
+            documentContextDocsConsidered: documentContext.docsConsidered,
             documentContextChars: documentContext.contextText.length,
             responseId: completion.responseId,
             status: 200,
@@ -372,6 +387,7 @@ export async function POST(request: Request, { params }: Params) {
         } catch (error) {
           const durationMs = Date.now() - startedAt;
           const isTimeout = error instanceof OpenAITimeoutError;
+          const isRateLimit = error instanceof OpenAIRateLimitError;
           const isAbortError =
             isAborted ||
             localAbortController.signal.aborted ||
@@ -381,7 +397,12 @@ export async function POST(request: Request, { params }: Params) {
             send("error", {
               error: isTimeout
                 ? "Coach reageerde niet binnen de ingestelde tijd."
-                : "Coach is tijdelijk niet bereikbaar.",
+                : isRateLimit
+                  ? "Coach is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
+                  : "Coach is tijdelijk niet bereikbaar.",
+              status: isRateLimit ? 429 : isTimeout ? 504 : 500,
+              retryAfterMs:
+                error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
               requestId,
             });
           }
@@ -393,9 +414,11 @@ export async function POST(request: Request, { params }: Params) {
             userId,
             clientId,
             conversationId: conversationId ?? null,
-            status: isTimeout ? 504 : isAbortError ? 499 : 500,
+            status: isTimeout ? 504 : isRateLimit ? 429 : isAbortError ? 499 : 500,
             durationMs,
             errorMessage: error instanceof Error ? error.message : String(error),
+            retryAfterMs:
+              error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
           });
         } finally {
           request.signal.removeEventListener("abort", onRequestAbort);

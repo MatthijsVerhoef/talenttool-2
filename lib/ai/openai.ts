@@ -8,6 +8,9 @@ type ChatRole = "user" | "assistant" | "system";
 let client: OpenAI | null = null;
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? "45000");
 const OPENAI_STALL_MS = Number(process.env.OPENAI_STALL_MS ?? "0");
+const OPENAI_PDF_EXTRACT_MAX_OUTPUT_TOKENS = Number(
+  process.env.OPENAI_PDF_EXTRACT_MAX_OUTPUT_TOKENS ?? "12000",
+);
 
 export class OpenAITimeoutError extends Error {
   readonly timeoutMs: number;
@@ -23,6 +26,67 @@ export class OpenAITimeoutError extends Error {
     this.timeoutMs = timeoutMs;
     this.operation = operation;
   }
+}
+
+export class OpenAIRateLimitError extends Error {
+  readonly retryAfterMs?: number;
+  readonly operation?: string;
+
+  constructor(retryAfterMs?: number, operation?: string) {
+    super(
+      operation
+        ? `OpenAI rate limit reached during ${operation}`
+        : "OpenAI rate limit reached",
+    );
+    this.name = "OpenAIRateLimitError";
+    this.retryAfterMs = retryAfterMs;
+    this.operation = operation;
+  }
+}
+
+function getErrorStatus(error: unknown): number | null {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" ? status : null;
+}
+
+function getRetryAfterMs(error: unknown): number | undefined {
+  const headers = (error as { headers?: unknown } | null)?.headers as
+    | { get?: (key: string) => string | null | undefined; [key: string]: unknown }
+    | undefined;
+  const rawHeader =
+    (headers && typeof headers.get === "function"
+      ? headers.get("retry-after")
+      : (headers?.["retry-after"] as string | undefined)) ?? undefined;
+  if (rawHeader) {
+    const seconds = Number(rawHeader);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.round(seconds * 1000);
+    }
+  }
+
+  const message = (error as { message?: unknown } | null)?.message;
+  if (typeof message === "string") {
+    const msMatch = message.match(/try again in\s+(\d+)\s*ms/i);
+    if (msMatch && msMatch[1]) {
+      const parsed = Number(msMatch[1]);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function isRateLimitError(error: unknown): boolean {
+  if (getErrorStatus(error) === 429) {
+    return true;
+  }
+  const message = (error as { message?: unknown } | null)?.message;
+  if (typeof message === "string") {
+    return message.toLowerCase().includes("rate limit");
+  }
+  return false;
 }
 
 function createClient() {
@@ -180,6 +244,20 @@ export async function runAgentCompletion(
       throw timeoutError;
     }
 
+    if (isRateLimitError(error)) {
+      const retryAfterMs = getRetryAfterMs(error);
+      const rateLimitError = new OpenAIRateLimitError(retryAfterMs, options.operation);
+      logError("openai.rate_limit", {
+        requestId: options.requestId ?? null,
+        operation: options.operation ?? null,
+        model: options.model,
+        durationMs,
+        retryAfterMs: retryAfterMs ?? null,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw rateLimitError;
+    }
+
     logError("openai.error", {
       requestId: options.requestId ?? null,
       operation: options.operation ?? null,
@@ -291,6 +369,21 @@ export async function runAgentCompletionStream(
 
     if (abortedByCaller || options.signal?.aborted) {
       throw new Error("Aborted");
+    }
+
+    if (isRateLimitError(error)) {
+      const retryAfterMs = getRetryAfterMs(error);
+      const rateLimitError = new OpenAIRateLimitError(retryAfterMs, options.operation);
+      logError("openai.rate_limit", {
+        requestId: options.requestId ?? null,
+        operation: options.operation ?? null,
+        model: options.model,
+        durationMs,
+        retryAfterMs: retryAfterMs ?? null,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stream: true,
+      });
+      throw rateLimitError;
     }
 
     logError("openai.error", {
@@ -414,13 +507,22 @@ export async function extractPdfTextFromBuffer(
     const response = await client.responses.create(
       {
         model,
+        max_output_tokens: Math.max(
+          1000,
+          Math.floor(OPENAI_PDF_EXTRACT_MAX_OUTPUT_TOKENS),
+        ),
         input: [
           {
             role: "user",
             content: [
               {
                 type: "input_text",
-                text: "Extract all readable text from this PDF as plain UTF-8 text. Preserve wording and line breaks where possible. Do not summarize.",
+                text: [
+                  "Extract ALL readable text from this PDF as plain UTF-8 text.",
+                  "Return full text from all pages; do not summarize.",
+                  "Preserve headings, bullet points, and line breaks where possible.",
+                  "If text is unclear, keep best-effort OCR output instead of omitting.",
+                ].join(" "),
               },
               {
                 type: "input_file",

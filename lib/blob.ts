@@ -3,6 +3,8 @@ import { Buffer } from "node:buffer";
 import { put, del } from "@vercel/blob";
 
 const BLOB_RW_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+const ENABLE_INLINE_BLOB_FALLBACK =
+  process.env.BLOB_INLINE_FALLBACK !== "0" && process.env.NODE_ENV !== "production";
 
 export interface BlobUploadResult {
   url: string;
@@ -16,7 +18,15 @@ export async function uploadToBlob(
   contentType?: string,
 ): Promise<BlobUploadResult> {
   if (!BLOB_RW_TOKEN) {
-    throw new Error("Missing BLOB_READ_WRITE_TOKEN environment variable.");
+    if (!ENABLE_INLINE_BLOB_FALLBACK) {
+      throw new Error("Missing BLOB_READ_WRITE_TOKEN environment variable.");
+    }
+    const buffer = await ensureBuffer(data);
+    const resolvedContentType = contentType ?? "application/octet-stream";
+    return {
+      url: `data:${resolvedContentType};base64,${buffer.toString("base64")}`,
+      contentType: resolvedContentType,
+    };
   }
 
   const blob = await put(
@@ -39,7 +49,16 @@ export async function uploadToBlob(
 
 export async function deleteFromBlob(urls: string | string[]): Promise<void> {
   if (!BLOB_RW_TOKEN) {
-    throw new Error("Missing BLOB_READ_WRITE_TOKEN environment variable.");
+    if (!ENABLE_INLINE_BLOB_FALLBACK) {
+      throw new Error("Missing BLOB_READ_WRITE_TOKEN environment variable.");
+    }
+
+    const values = Array.isArray(urls) ? urls : [urls];
+    const hasNonDataUrl = values.some((value) => !value.trim().startsWith("data:"));
+    if (hasNonDataUrl) {
+      throw new Error("Missing BLOB_READ_WRITE_TOKEN environment variable.");
+    }
+    return;
   }
   await del(urls, { token: BLOB_RW_TOKEN });
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { runCoachAgent } from "@/lib/agents/service";
-import { OpenAITimeoutError } from "@/lib/ai/openai";
+import { OpenAIRateLimitError, OpenAITimeoutError } from "@/lib/ai/openai";
 import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
 import { getSessionWindow } from "@/lib/data/store";
@@ -250,6 +250,8 @@ export async function POST(request: Request, { params }: Params) {
       messageLength: message.length,
       replyLength: result.reply.length,
       documentContextChunkCount: result.documentContextSources?.length ?? 0,
+      documentContextDocsConsidered: result.docContext?.docsConsidered ?? null,
+      documentContextChars: result.docContext?.totalChars ?? null,
       documentContextDocumentCount: documentIds.length,
       documentIds,
       status: 200,
@@ -267,13 +269,20 @@ export async function POST(request: Request, { params }: Params) {
       ...(DEBUG_DOC_CONTEXT
         ? {
             documentContextSources: result.documentContextSources ?? [],
+            docContext: result.docContext ?? {
+              docsConsidered: 0,
+              chunksSelected: 0,
+              totalChars: 0,
+              sources: [],
+            },
           }
         : {}),
     });
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     const isTimeout = error instanceof OpenAITimeoutError;
-    const status = isTimeout ? 504 : 500;
+    const isRateLimit = error instanceof OpenAIRateLimitError;
+    const status = isTimeout ? 504 : isRateLimit ? 429 : 500;
     logError("api.coach.post.error", {
       requestId,
       route,
@@ -281,13 +290,19 @@ export async function POST(request: Request, { params }: Params) {
       status,
       durationMs,
       errorMessage: error instanceof Error ? error.message : String(error),
+      retryAfterMs:
+        error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
     });
     return jsonWithRequestId(
       requestId,
       {
         error: isTimeout
           ? "Coach reageerde niet binnen de ingestelde tijd."
-          : "Coach is tijdelijk niet bereikbaar.",
+          : isRateLimit
+            ? "Coach is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
+            : "Coach is tijdelijk niet bereikbaar.",
+        retryAfterMs:
+          error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
         requestId,
       },
       { status },

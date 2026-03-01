@@ -27,6 +27,7 @@ function jsonWithRequestId(
 ) {
   const response = NextResponse.json(body, init);
   response.headers.set("x-request-id", requestId);
+  response.headers.set("Cache-Control", "no-store");
   return response;
 }
 

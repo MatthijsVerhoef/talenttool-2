@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { generateClientReport } from "@/lib/agents/service";
-import { OpenAITimeoutError } from "@/lib/ai/openai";
+import { OpenAIRateLimitError, OpenAITimeoutError } from "@/lib/ai/openai";
 import { auth } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
 import { listClientReports } from "@/lib/data/store";
@@ -22,6 +22,7 @@ function jsonWithRequestId(
 ) {
   const response = NextResponse.json(body, init);
   response.headers.set("x-request-id", requestId);
+  response.headers.set("Cache-Control", "no-store");
   return response;
 }
 
@@ -237,6 +238,8 @@ export async function POST(request: Request, { params }: RouteParams) {
       reportId: result.reportId ?? null,
       replyLength: result.reply.length,
       documentContextChunkCount: result.documentContextSources?.length ?? 0,
+      documentContextDocsConsidered: result.docContext?.docsConsidered ?? null,
+      documentContextChars: result.docContext?.totalChars ?? null,
       documentContextDocumentCount: documentIds.length,
       documentIds,
       totalTokens: result.usage?.totalTokens,
@@ -253,15 +256,28 @@ export async function POST(request: Request, { params }: RouteParams) {
       ...(DEBUG_DOC_CONTEXT
         ? {
             documentContextSources: result.documentContextSources ?? [],
+            docContext: result.docContext ?? {
+              docsConsidered: 0,
+              chunksSelected: 0,
+              totalChars: 0,
+              sources: [],
+            },
           }
         : {}),
     });
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     const isTimeout = error instanceof OpenAITimeoutError;
+    const isRateLimit = error instanceof OpenAIRateLimitError;
     const message =
       error instanceof Error ? error.message : "Rapport genereren is mislukt.";
-    const status = isTimeout ? 504 : message.includes("niet gevonden") ? 404 : 500;
+    const status = isTimeout
+      ? 504
+      : isRateLimit
+        ? 429
+        : message.includes("niet gevonden")
+          ? 404
+          : 500;
     logError("api.client-report.post.error", {
       requestId,
       route,
@@ -269,13 +285,19 @@ export async function POST(request: Request, { params }: RouteParams) {
       durationMs,
       status,
       errorMessage: message,
+      retryAfterMs:
+        error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
     });
     return jsonWithRequestId(
       requestId,
       {
         error: isTimeout
           ? "Rapportgeneratie reageerde niet binnen de ingestelde tijd."
-          : message,
+          : isRateLimit
+            ? "Rapportgeneratie is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
+            : message,
+        retryAfterMs:
+          error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
         requestId,
       },
       { status },
