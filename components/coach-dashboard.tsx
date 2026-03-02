@@ -563,6 +563,27 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [selectedClientId, selectedClientHistory, selectedClientDocs]);
 
   useEffect(() => {
+    if (!selectedClientId) {
+      return;
+    }
+    const docs = selectedClientDocs ?? [];
+    const hasPendingExtraction = docs.some(
+      (document) => document.extractionStatus === "PENDING"
+    );
+    if (!hasPendingExtraction) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void fetchClientDocuments(selectedClientId);
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [selectedClientId, selectedClientDocs]);
+
+  useEffect(() => {
     if (!selectedClientId) return;
     void fetchClientReports(selectedClientId);
   }, [selectedClientId]);
@@ -1683,6 +1704,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
   async function uploadClientDocument(file: File) {
     if (!selectedClientId) return;
+    const clientId = selectedClientId;
 
     setDocUploading(true);
     setError(null);
@@ -1691,7 +1713,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       payload.append("file", file);
 
       const response = await fetch(
-        `/api/clients/${selectedClientId}/documents`,
+        `/api/clients/${clientId}/documents`,
         {
           method: "POST",
           body: payload,
@@ -1702,11 +1724,25 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       const data = await response.json();
       setClientDocuments((prev) => ({
         ...prev,
-        [selectedClientId]: data.documents ?? [],
+        [clientId]: data.documents ?? [],
       }));
+
+      const latestUploaded = Array.isArray(data.documents)
+        ? data.documents[0]
+        : null;
+      if (latestUploaded?.extractionStatus === "FAILED") {
+        toast.error(
+          "Bestand is geüpload, maar tekstextractie is mislukt. Probeer herverwerken."
+        );
+      } else if (latestUploaded?.extractionStatus === "PENDING") {
+        toast("Bestand geüpload. Verwerking loopt nog.");
+      } else {
+        toast.success("Bestand geüpload.");
+      }
     } catch (uploadError) {
       console.error(uploadError);
       setError((uploadError as Error).message ?? "Uploaden is niet gelukt.");
+      void fetchClientDocuments(clientId);
     } finally {
       setDocUploading(false);
     }
@@ -2623,9 +2659,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               <button
                 type="button"
                 onClick={handleAttachmentButtonClick}
+                disabled={isDocUploading}
                 className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800"
               >
-                Upload
+                {isDocUploading ? "Uploaden..." : "Upload"}
               </button>
             </div>
 
@@ -2645,9 +2682,18 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                     {/* Left */}
                     <div className="flex items-center gap-3 min-w-0">
                       <FileText className="size-3.5 min-w-3.5 text-primary" />
-                      <p className="truncate text-[12px] text-slate-800">
-                        {doc.originalName}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] text-slate-800">
+                          {doc.originalName}
+                        </p>
+                        <p className="truncate text-[11px] text-slate-500">
+                          {doc.extractionStatus === "READY"
+                            ? "Tekst verwerkt"
+                            : doc.extractionStatus === "FAILED"
+                            ? `Verwerking mislukt${doc.extractionError ? `: ${doc.extractionError}` : ""}`
+                            : "Verwerking bezig..."}
+                        </p>
+                      </div>
                     </div>
 
                     {/* Right */}

@@ -32,6 +32,16 @@ OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
 OPENAI_TRANSCRIBE_TIMEOUT_MS=45000
 TRANSCRIBE_MAX_BYTES=10000000
 TRANSCRIBE_MAX_SECONDS=60
+# Optional for PDF extraction tuning
+OPENAI_PDF_EXTRACT_MODEL=gpt-4o-mini
+OPENAI_PDF_EXTRACT_FALLBACK_MODELS=gpt-4o,gpt-4.1
+OPENAI_PDF_EXTRACT_TIMEOUT_MS=90000
+# Optional debug logging for PDF extraction attempts
+DEBUG_PDF_EXTRACT=1
+PDF_EXTRACT_PREVIEW_CHARS=220
+PDF_EXTRACT_MIN_CHARS=120
+PDF_EXTRACT_MIN_BYTES_FOR_MIN_CHARS=150000
+PDF_LOCAL_EXTRACT_MIN_CHARS=80
 ```
 
 The blob token is needed for persistent document uploads. Create a Vercel Blob store and copy the read/write token.
@@ -113,6 +123,8 @@ LIMIT 5;
 ## Document context verification
 
 1. Upload a PDF to Client A via `POST /api/clients/{clientId}/documents`.
+   - Upload returns immediately; extraction continues asynchronously in background.
+   - Wait until document `extractionStatus` is `READY` (or use debug endpoint below).
 2. Ask coach chat a question that includes a phrase from that PDF.
 3. Confirm answer references the phrase and server logs include `doc_context.selected` with:
    - `clientId` of Client A

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { DocumentExtractionStatus } from "@prisma/client";
 
 import { uploadToBlob } from "@/lib/blob";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
 import {
   createClientDocument,
   getClientDocuments,
+  updateClientDocumentExtraction,
 } from "@/lib/data/store";
 import { extractDocumentContent } from "@/lib/documents/extract";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
@@ -25,6 +27,90 @@ function jsonWithRequestId(
   response.headers.set("x-request-id", requestId);
   response.headers.set("Cache-Control", "no-store");
   return response;
+}
+
+function queueDocumentExtraction(options: {
+  requestId: string;
+  route: string;
+  userId: string;
+  clientId: string;
+  documentId: string;
+  fileName: string;
+  mimeType: string;
+  bytes: number;
+  buffer: Buffer;
+}) {
+  void (async () => {
+    const extractionRequestId = `${options.requestId}:extract:${options.documentId}`;
+    const startedAt = Date.now();
+
+    logInfo("documents.extract.start", {
+      requestId: extractionRequestId,
+      route: options.route,
+      userId: options.userId,
+      clientId: options.clientId,
+      documentId: options.documentId,
+      filename: options.fileName,
+      mimeType: options.mimeType,
+      bytes: options.bytes,
+    });
+
+    try {
+      const extraction = await extractDocumentContent({
+        buffer: options.buffer,
+        fileName: options.fileName,
+        mimeType: options.mimeType,
+        requestId: extractionRequestId,
+      });
+
+      const updated = await updateClientDocumentExtraction({
+        documentId: options.documentId,
+        clientId: options.clientId,
+        content: extraction.content,
+        kind: extraction.kind,
+        audioDuration:
+          typeof extraction.audioDuration === "number"
+            ? extraction.audioDuration
+            : null,
+        extractionStatus: extraction.extractionStatus,
+        extractionError: extraction.extractionError ?? null,
+        extractedAt: extraction.extractedAt ?? new Date(),
+      });
+
+      logInfo("documents.extract.end", {
+        requestId: extractionRequestId,
+        route: options.route,
+        userId: options.userId,
+        clientId: options.clientId,
+        documentId: options.documentId,
+        status: updated ? 200 : 404,
+        extractionStatus: extraction.extractionStatus,
+        extractionError: extraction.extractionError ?? null,
+        extractedChars: extraction.content?.length ?? 0,
+        durationMs: Date.now() - startedAt,
+      });
+    } catch (error) {
+      const extractionError =
+        error instanceof Error ? error.message : "Extractie mislukt.";
+      logError("documents.extract.error", {
+        requestId: extractionRequestId,
+        route: options.route,
+        userId: options.userId,
+        clientId: options.clientId,
+        documentId: options.documentId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: extractionError,
+      });
+
+      await updateClientDocumentExtraction({
+        documentId: options.documentId,
+        clientId: options.clientId,
+        extractionStatus: DocumentExtractionStatus.FAILED,
+        extractionError,
+        extractedAt: new Date(),
+      }).catch(() => null);
+    }
+  })();
 }
 
 export async function GET(request: Request, { params }: Params) {
@@ -150,12 +236,7 @@ export async function POST(request: Request, { params }: Params) {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  const extraction = await extractDocumentContent({
-    buffer,
-    fileName: file.name,
-    mimeType: file.type || "application/octet-stream",
-    requestId,
-  });
+  let createdDocumentId: string | null = null;
 
   try {
     const blob = await uploadToBlob(
@@ -164,19 +245,18 @@ export async function POST(request: Request, { params }: Params) {
       file.type || "application/octet-stream",
     );
 
-    await createClientDocument({
+    const createdDocument = await createClientDocument({
       clientId,
       originalName: file.name,
       storedName: blob.url,
       mimeType: file.type || "application/octet-stream",
       size: file.size,
-      content: extraction.content,
-      kind: extraction.kind,
-      audioDuration: extraction.audioDuration,
-      extractionStatus: extraction.extractionStatus,
-      extractionError: extraction.extractionError ?? null,
-      extractedAt: extraction.extractedAt,
+      extractionStatus: DocumentExtractionStatus.PENDING,
+      extractionError: null,
+      extractedAt: null,
     });
+
+    createdDocumentId = createdDocument.id;
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     logError("documents.upload.error", {
@@ -196,6 +276,20 @@ export async function POST(request: Request, { params }: Params) {
     );
   }
 
+  if (createdDocumentId) {
+    queueDocumentExtraction({
+      requestId,
+      route,
+      userId: session.user.id,
+      clientId,
+      documentId: createdDocumentId,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      bytes: file.size,
+      buffer,
+    });
+  }
+
   const documents = await getClientDocuments(clientId);
   const durationMs = Date.now() - startedAt;
   logInfo("documents.upload.end", {
@@ -205,9 +299,11 @@ export async function POST(request: Request, { params }: Params) {
     clientId,
     filename: file.name,
     bytes: file.size,
-    extractionStatus: extraction.extractionStatus,
-    extractionError: extraction.extractionError ?? null,
-    extractedChars: extraction.content?.length ?? 0,
+    documentId: createdDocumentId,
+    extractionStatus: DocumentExtractionStatus.PENDING,
+    extractionError: null,
+    extractedChars: 0,
+    extractionQueued: Boolean(createdDocumentId),
     status: 200,
     durationMs,
   });

@@ -4,10 +4,15 @@ import path from "node:path";
 
 import { DocumentExtractionStatus } from "@prisma/client";
 import JSZip from "jszip";
+import pdfParse from "pdf-parse";
 
 import { extractPdfTextFromBuffer, transcribeAudio } from "@/lib/ai/openai";
+import { logError, logInfo } from "@/lib/observability";
 
 const DOCUMENT_CONTENT_MAX_CHARS = Number(process.env.DOCUMENT_CONTENT_MAX_CHARS ?? "0");
+const PDF_LOCAL_EXTRACT_MIN_CHARS = Number(
+  process.env.PDF_LOCAL_EXTRACT_MIN_CHARS ?? "80",
+);
 
 export interface ExtractDocumentContentResult {
   kind: "TEXT" | "AUDIO";
@@ -32,19 +37,81 @@ export async function extractDocumentContent(
   const isAudio = isAudioFile(input.fileName, mimeType);
   const isPdf = isPdfFile(input.fileName, mimeType);
   const isDocx = isDocxFile(input.fileName, mimeType);
+  const startedAt = Date.now();
+
+  logInfo("documents.extractor.start", {
+    requestId: input.requestId ?? null,
+    fileName: input.fileName,
+    mimeType,
+    bytes: input.buffer.byteLength,
+    isAudio,
+    isPdf,
+    isDocx,
+  });
 
   try {
     if (isAudio) {
-      return await extractAudioContent(input.buffer, input.fileName, mimeType);
+      const result = await extractAudioContent(input.buffer, input.fileName, mimeType);
+      logInfo("documents.extractor.end", {
+        requestId: input.requestId ?? null,
+        fileName: input.fileName,
+        mimeType,
+        branch: "audio",
+        status: result.extractionStatus,
+        contentChars: result.content?.length ?? 0,
+        audioDuration: result.audioDuration ?? null,
+        error: result.extractionError ?? null,
+        durationMs: Date.now() - startedAt,
+      });
+      return result;
     }
 
     if (isPdf) {
+      const localPdfExtraction = await tryExtractPdfTextLocally(
+        input.buffer,
+        input.fileName,
+        input.requestId,
+      );
+      if (localPdfExtraction.content) {
+        logInfo("documents.extractor.end", {
+          requestId: input.requestId ?? null,
+          fileName: input.fileName,
+          mimeType,
+          branch: "pdf",
+          source: "local",
+          status: DocumentExtractionStatus.READY,
+          rawChars: localPdfExtraction.rawChars,
+          contentChars: localPdfExtraction.content.length,
+          numPages: localPdfExtraction.numPages,
+          error: null,
+          durationMs: Date.now() - startedAt,
+        });
+        return {
+          kind: "TEXT",
+          content: localPdfExtraction.content,
+          extractionStatus: DocumentExtractionStatus.READY,
+          extractedAt: new Date(),
+        };
+      }
+
       const extracted = await extractPdfTextFromBuffer(input.buffer, {
         requestId: input.requestId,
         fileName: input.fileName,
       });
       const content = trimContent(extracted);
       if (!content) {
+        logInfo("documents.extractor.end", {
+          requestId: input.requestId ?? null,
+          fileName: input.fileName,
+          mimeType,
+          branch: "pdf",
+          source: "openai-fallback",
+          status: DocumentExtractionStatus.FAILED,
+          rawChars: extracted.length,
+          contentChars: 0,
+          error: "PDF bevat geen extraheerbare tekst.",
+          durationMs: Date.now() - startedAt,
+        });
         return {
           kind: "TEXT",
           extractionStatus: DocumentExtractionStatus.FAILED,
@@ -52,6 +119,18 @@ export async function extractDocumentContent(
           extractedAt: new Date(),
         };
       }
+      logInfo("documents.extractor.end", {
+        requestId: input.requestId ?? null,
+        fileName: input.fileName,
+        mimeType,
+        branch: "pdf",
+        source: "openai-fallback",
+        status: DocumentExtractionStatus.READY,
+        rawChars: extracted.length,
+        contentChars: content.length,
+        error: null,
+        durationMs: Date.now() - startedAt,
+      });
       return {
         kind: "TEXT",
         content,
@@ -64,6 +143,17 @@ export async function extractDocumentContent(
       const extracted = await extractDocxText(input.buffer);
       const content = trimContent(extracted);
       if (!content) {
+        logInfo("documents.extractor.end", {
+          requestId: input.requestId ?? null,
+          fileName: input.fileName,
+          mimeType,
+          branch: "docx",
+          status: DocumentExtractionStatus.FAILED,
+          rawChars: extracted?.length ?? 0,
+          contentChars: 0,
+          error: "DOCX tekstextractie gaf geen resultaat.",
+          durationMs: Date.now() - startedAt,
+        });
         return {
           kind: "TEXT",
           extractionStatus: DocumentExtractionStatus.FAILED,
@@ -71,6 +161,17 @@ export async function extractDocumentContent(
           extractedAt: new Date(),
         };
       }
+      logInfo("documents.extractor.end", {
+        requestId: input.requestId ?? null,
+        fileName: input.fileName,
+        mimeType,
+        branch: "docx",
+        status: DocumentExtractionStatus.READY,
+        rawChars: extracted?.length ?? 0,
+        contentChars: content.length,
+        error: null,
+        durationMs: Date.now() - startedAt,
+      });
       return {
         kind: "TEXT",
         content,
@@ -82,6 +183,16 @@ export async function extractDocumentContent(
     if (shouldStoreContent(mimeType, input.fileName)) {
       const content = trimContent(input.buffer.toString("utf-8"));
       if (!content) {
+        logInfo("documents.extractor.end", {
+          requestId: input.requestId ?? null,
+          fileName: input.fileName,
+          mimeType,
+          branch: "text",
+          status: DocumentExtractionStatus.FAILED,
+          contentChars: 0,
+          error: "Tekstbestand bevat geen leesbare inhoud.",
+          durationMs: Date.now() - startedAt,
+        });
         return {
           kind: "TEXT",
           extractionStatus: DocumentExtractionStatus.FAILED,
@@ -89,6 +200,16 @@ export async function extractDocumentContent(
           extractedAt: new Date(),
         };
       }
+      logInfo("documents.extractor.end", {
+        requestId: input.requestId ?? null,
+        fileName: input.fileName,
+        mimeType,
+        branch: "text",
+        status: DocumentExtractionStatus.READY,
+        contentChars: content.length,
+        error: null,
+        durationMs: Date.now() - startedAt,
+      });
       return {
         kind: "TEXT",
         content,
@@ -97,18 +218,83 @@ export async function extractDocumentContent(
       };
     }
 
+    logInfo("documents.extractor.end", {
+      requestId: input.requestId ?? null,
+      fileName: input.fileName,
+      mimeType,
+      branch: "unsupported",
+      status: DocumentExtractionStatus.PENDING,
+      contentChars: 0,
+      error: null,
+      durationMs: Date.now() - startedAt,
+    });
     return {
       kind: "TEXT",
       extractionStatus: DocumentExtractionStatus.PENDING,
       extractedAt: null,
     };
   } catch (error) {
+    const errorMessage =
+      error instanceof Error ? sanitizeErrorMessage(error.message) : "Extractie mislukt.";
+    logError("documents.extractor.error", {
+      requestId: input.requestId ?? null,
+      fileName: input.fileName,
+      mimeType,
+      isAudio,
+      isPdf,
+      isDocx,
+      durationMs: Date.now() - startedAt,
+      errorMessage,
+    });
     return {
       kind: isAudio ? "AUDIO" : "TEXT",
       extractionStatus: DocumentExtractionStatus.FAILED,
-      extractionError:
-        error instanceof Error ? sanitizeErrorMessage(error.message) : "Extractie mislukt.",
+      extractionError: errorMessage,
       extractedAt: new Date(),
+    };
+  }
+}
+
+async function tryExtractPdfTextLocally(
+  buffer: Buffer,
+  fileName: string,
+  requestId?: string,
+): Promise<{ content?: string; rawChars: number; numPages: number | null }> {
+  try {
+    const parsed = await pdfParse(buffer);
+    const rawText = parsed.text ?? "";
+    const trimmedText = trimContent(rawText);
+    const minChars = Number.isFinite(PDF_LOCAL_EXTRACT_MIN_CHARS)
+      ? Math.max(20, Math.floor(PDF_LOCAL_EXTRACT_MIN_CHARS))
+      : 80;
+    const content =
+      trimmedText && trimmedText.trim().length >= minChars ? trimmedText : undefined;
+
+    logInfo("documents.extractor.pdf.local", {
+      requestId: requestId ?? null,
+      fileName,
+      rawChars: rawText.length,
+      trimmedChars: trimmedText?.length ?? 0,
+      minChars,
+      numPages: typeof parsed.numpages === "number" ? parsed.numpages : null,
+      used: Boolean(content),
+    });
+
+    return {
+      content,
+      rawChars: rawText.length,
+      numPages: typeof parsed.numpages === "number" ? parsed.numpages : null,
+    };
+  } catch (error) {
+    logError("documents.extractor.pdf.local_error", {
+      requestId: requestId ?? null,
+      fileName,
+      errorMessage: error instanceof Error ? sanitizeErrorMessage(error.message) : String(error),
+    });
+    return {
+      content: undefined,
+      rawChars: 0,
+      numPages: null,
     };
   }
 }

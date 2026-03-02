@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 import OpenAI from "openai";
+import { toFile } from "openai/uploads";
 import { logError, logInfo } from "@/lib/observability";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -11,6 +12,19 @@ const OPENAI_STALL_MS = Number(process.env.OPENAI_STALL_MS ?? "0");
 const OPENAI_PDF_EXTRACT_MAX_OUTPUT_TOKENS = Number(
   process.env.OPENAI_PDF_EXTRACT_MAX_OUTPUT_TOKENS ?? "12000",
 );
+const OPENAI_PDF_EXTRACT_TIMEOUT_MS = Number(
+  process.env.OPENAI_PDF_EXTRACT_TIMEOUT_MS ?? "90000",
+);
+const DEBUG_PDF_EXTRACT = process.env.DEBUG_PDF_EXTRACT === "1";
+const PDF_EXTRACT_PREVIEW_CHARS = Number(
+  process.env.PDF_EXTRACT_PREVIEW_CHARS ?? "220",
+);
+const PDF_EXTRACT_MIN_CHARS = Number(process.env.PDF_EXTRACT_MIN_CHARS ?? "120");
+const PDF_EXTRACT_MIN_BYTES_FOR_MIN_CHARS = Number(
+  process.env.PDF_EXTRACT_MIN_BYTES_FOR_MIN_CHARS ?? "150000",
+);
+const DEFAULT_OPENAI_PDF_EXTRACT_MODEL = "gpt-4o-mini";
+const DEFAULT_OPENAI_PDF_EXTRACT_FALLBACK_MODELS = ["gpt-4o", "gpt-4.1"];
 
 export class OpenAITimeoutError extends Error {
   readonly timeoutMs: number;
@@ -485,70 +499,183 @@ export async function extractPdfTextFromBuffer(
   },
 ): Promise<string> {
   const client = getOpenAIClient();
-  const model = process.env.OPENAI_PDF_EXTRACT_MODEL ?? "gpt-4o-mini";
-  const timeoutMs = resolveTimeoutMs(options?.timeoutMs);
+  const models = getPdfExtractModelCandidates();
+  const timeoutMs = resolveTimeoutMs(
+    options?.timeoutMs ?? OPENAI_PDF_EXTRACT_TIMEOUT_MS,
+  );
   const startedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
+  let uploadedFileId: string | null = null;
 
   logInfo("openai.start", {
     requestId: options?.requestId ?? null,
     operation: "extract-pdf",
-    model,
+    model: models[0] ?? null,
     timeoutMs,
     inputBytes: buffer.byteLength,
+    inputMode: "file_id",
+    modelCandidates: models,
   });
 
   try {
-    await maybeStall(controller.signal);
-    const fileData = `data:application/pdf;base64,${buffer.toString("base64")}`;
-    const response = await client.responses.create(
-      {
-        model,
-        max_output_tokens: Math.max(
-          1000,
-          Math.floor(OPENAI_PDF_EXTRACT_MAX_OUTPUT_TOKENS),
-        ),
-        input: [
+    const uploadedFile = await client.files.create({
+      file: await toFile(
+        buffer,
+        options?.fileName ?? "document.pdf",
+        { type: "application/pdf" },
+      ),
+      purpose: "user_data",
+    });
+    uploadedFileId = uploadedFile.id;
+
+    if (DEBUG_PDF_EXTRACT) {
+      logInfo("openai.extract_pdf.file_uploaded", {
+        requestId: options?.requestId ?? null,
+        fileId: uploadedFileId,
+        fileName: options?.fileName ?? "document.pdf",
+        bytes: buffer.byteLength,
+      });
+    }
+
+    try {
+      await client.files.waitForProcessing(uploadedFileId, {
+        pollInterval: 400,
+        maxWait: 30_000,
+      });
+    } catch (processingError) {
+      if (DEBUG_PDF_EXTRACT) {
+        logError("openai.extract_pdf.file_processing_warning", {
+          requestId: options?.requestId ?? null,
+          fileId: uploadedFileId,
+          errorMessage:
+            processingError instanceof Error
+              ? processingError.message
+              : String(processingError),
+        });
+      }
+    }
+
+    let lastError: unknown = null;
+    for (let index = 0; index < models.length; index += 1) {
+      const model = models[index];
+      if (!model) {
+        continue;
+      }
+
+      try {
+        if (DEBUG_PDF_EXTRACT) {
+          logInfo("openai.extract_pdf.attempt_start", {
+            requestId: options?.requestId ?? null,
+            model,
+            attempt: index + 1,
+            totalAttempts: models.length,
+            timeoutMs,
+            inputBytes: buffer.byteLength,
+            fileName: options?.fileName ?? "document.pdf",
+          });
+        }
+
+        await maybeStall(controller.signal);
+        const response = await client.responses.create(
           {
-            role: "user",
-            content: [
+            model,
+            max_output_tokens: Math.max(
+              1000,
+              Math.floor(OPENAI_PDF_EXTRACT_MAX_OUTPUT_TOKENS),
+            ),
+            input: [
               {
-                type: "input_text",
-                text: [
-                  "Extract ALL readable text from this PDF as plain UTF-8 text.",
-                  "Return full text from all pages; do not summarize.",
-                  "Preserve headings, bullet points, and line breaks where possible.",
-                  "If text is unclear, keep best-effort OCR output instead of omitting.",
-                ].join(" "),
-              },
-              {
-                type: "input_file",
-                filename: options?.fileName ?? "document.pdf",
-                file_data: fileData,
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: [
+                      "You are processing a user-uploaded PDF for private retrieval and question answering.",
+                      "Extract readable text as plain UTF-8 for internal indexing.",
+                      "Preserve headings, bullet points, and line breaks where possible.",
+                      "Return only extracted document text (no explanations, no disclaimers).",
+                      "If parts are unclear, provide best-effort OCR text instead of refusing.",
+                    ].join(" "),
+                  },
+                  {
+                    type: "input_file",
+                    file_id: uploadedFileId,
+                  },
+                ],
               },
             ],
+          } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming,
+          {
+            signal: controller.signal,
           },
-        ],
-      } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming,
-      {
-        signal: controller.signal,
-      },
-    );
+        );
 
-    const outputText = extractText(response);
-    const durationMs = Date.now() - startedAt;
-    logInfo("openai.success", {
-      requestId: options?.requestId ?? null,
-      operation: "extract-pdf",
-      model,
-      durationMs,
-      outputCharCount: outputText.length,
-    });
+        const outputText = extractText(response);
+        const qualityIssue = getPdfExtractionQualityIssue(
+          outputText,
+          buffer.byteLength,
+        );
+        const refusalPattern = getPdfExtractionRefusalPattern(outputText);
+        if (DEBUG_PDF_EXTRACT) {
+          logInfo("openai.extract_pdf.attempt_result", {
+            requestId: options?.requestId ?? null,
+            model,
+            attempt: index + 1,
+            totalAttempts: models.length,
+            responseId: response.id,
+            outputCharCount: outputText.length,
+            outputPreview: buildPdfExtractPreview(outputText),
+            refusalPattern,
+            qualityIssue,
+            ...summarizePdfExtractResponse(response),
+          });
+        }
 
-    return outputText;
+        if (qualityIssue) {
+          throw new Error(`PDF extraction quality check failed: ${qualityIssue}`);
+        }
+
+        const durationMs = Date.now() - startedAt;
+        logInfo("openai.success", {
+          requestId: options?.requestId ?? null,
+          operation: "extract-pdf",
+          model,
+          attempt: index + 1,
+          totalAttempts: models.length,
+          durationMs,
+          outputCharCount: outputText.length,
+        });
+        return outputText;
+      } catch (error) {
+        if (controller.signal.aborted) {
+          throw error;
+        }
+
+        lastError = error;
+        const shouldRetry = index < models.length - 1;
+        logError("openai.error", {
+          requestId: options?.requestId ?? null,
+          operation: "extract-pdf",
+          model,
+          attempt: index + 1,
+          totalAttempts: models.length,
+          durationMs: Date.now() - startedAt,
+          willRetry: shouldRetry,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+
+        if (!shouldRetry) {
+          throw error;
+        }
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("PDF extraction failed for all configured models.");
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     if (controller.signal.aborted) {
@@ -556,24 +683,171 @@ export async function extractPdfTextFromBuffer(
       logError("openai.timeout", {
         requestId: options?.requestId ?? null,
         operation: "extract-pdf",
-        model,
+        model: models[0] ?? null,
         timeoutMs,
         durationMs,
       });
       throw timeoutError;
     }
 
-    logError("openai.error", {
-      requestId: options?.requestId ?? null,
-      operation: "extract-pdf",
-      model,
-      durationMs,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
     throw error;
   } finally {
+    if (uploadedFileId) {
+      await client.files.delete(uploadedFileId).catch((deleteError) => {
+        if (DEBUG_PDF_EXTRACT) {
+          logError("openai.extract_pdf.file_delete_warning", {
+            requestId: options?.requestId ?? null,
+            fileId: uploadedFileId,
+            errorMessage:
+              deleteError instanceof Error ? deleteError.message : String(deleteError),
+          });
+        }
+      });
+    }
     clearTimeout(timeout);
   }
+}
+
+function getPdfExtractModelCandidates() {
+  const primary =
+    process.env.OPENAI_PDF_EXTRACT_MODEL?.trim() || DEFAULT_OPENAI_PDF_EXTRACT_MODEL;
+  const rawFallback =
+    process.env.OPENAI_PDF_EXTRACT_FALLBACK_MODELS?.trim() ??
+    DEFAULT_OPENAI_PDF_EXTRACT_FALLBACK_MODELS.join(",");
+  const fallback = rawFallback
+    .split(",")
+    .map((model) => model.trim())
+    .filter((model) => model.length > 0);
+  return Array.from(new Set([primary, ...fallback]));
+}
+
+function getPdfExtractionRefusalPattern(text: string) {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  const refusalPatterns = [
+    "i'm unable to extract text",
+    "i am unable to extract text",
+    "unable to extract text",
+    "i'm unable to process the pdf",
+    "i am unable to process the pdf",
+    "unable to process the pdf",
+    "unable to process pdf",
+    "unable to process the document",
+    "unable to process the file",
+    "unable to process",
+    "i'm unable to assist with that",
+    "i am unable to assist with that",
+    "unable to assist with that",
+    "i cannot assist with that",
+    "i can't assist with that",
+    "cannot assist with that",
+    "can't assist with that",
+    "i'm unable to help with that",
+    "i am unable to help with that",
+    "unable to help with that",
+    "cannot extract text",
+    "can't extract text",
+    "cannot process the pdf",
+    "can't process the pdf",
+    "cannot process this pdf",
+    "can't process this pdf",
+    "cannot read files or images",
+    "can't read files or images",
+    "cannot access the file",
+    "can't access the file",
+    "use ocr",
+    "optical character recognition",
+    "ik kan geen tekst extraheren",
+    "ik kan dit bestand niet",
+    "kan geen pdf lezen",
+  ];
+  const directMatch =
+    refusalPatterns.find((pattern) => normalized.includes(pattern)) ?? null;
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const likelyUnableStatement =
+    normalized.length <= 280 &&
+    /(unable|cannot|can't|not able|niet in staat|kan niet)/.test(normalized) &&
+    /(pdf|document|file|extract|process|requested|verwerken)/.test(normalized);
+
+  if (likelyUnableStatement) {
+    return "heuristic_unable_pdf_statement";
+  }
+
+  return null;
+}
+
+function getPdfExtractionQualityIssue(text: string, inputBytes: number) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "empty_output";
+  }
+
+  const refusalPattern = getPdfExtractionRefusalPattern(trimmed);
+  if (refusalPattern) {
+    return `refusal:${refusalPattern}`;
+  }
+
+  const minChars = Number.isFinite(PDF_EXTRACT_MIN_CHARS)
+    ? Math.max(40, Math.floor(PDF_EXTRACT_MIN_CHARS))
+    : 120;
+  const minBytesForCheck = Number.isFinite(PDF_EXTRACT_MIN_BYTES_FOR_MIN_CHARS)
+    ? Math.max(1, Math.floor(PDF_EXTRACT_MIN_BYTES_FOR_MIN_CHARS))
+    : 150000;
+  if (inputBytes >= minBytesForCheck && trimmed.length < minChars) {
+    return `too_short:${trimmed.length}_chars_for_${inputBytes}_bytes`;
+  }
+
+  return null;
+}
+
+function buildPdfExtractPreview(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  const limit = Number.isFinite(PDF_EXTRACT_PREVIEW_CHARS)
+    ? Math.max(40, Math.floor(PDF_EXTRACT_PREVIEW_CHARS))
+    : 220;
+  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+}
+
+function summarizePdfExtractResponse(response: OpenAI.Responses.Response) {
+  const outputItems = Array.isArray(response.output) ? response.output : [];
+  const outputItemTypes = Array.from(
+    new Set(
+      outputItems.map((item) => {
+        const typed = item as { type?: unknown };
+        return typeof typed.type === "string" ? typed.type : "unknown";
+      }),
+    ),
+  );
+  const outputContentItemTypes = Array.from(
+    new Set(
+      outputItems.flatMap((item) => {
+        const typed = item as { content?: unknown };
+        if (!Array.isArray(typed.content)) {
+          return [] as string[];
+        }
+        return typed.content.map((contentItem) => {
+          const contentTyped = contentItem as { type?: unknown };
+          return typeof contentTyped.type === "string"
+            ? contentTyped.type
+            : "unknown";
+        });
+      }),
+    ),
+  );
+
+  return {
+    outputItemCount: outputItems.length,
+    outputItemTypes: outputItemTypes.slice(0, 10),
+    outputContentItemTypes: outputContentItemTypes.slice(0, 10),
+    totalTokens: response.usage?.total_tokens ?? null,
+    inputTokens: response.usage?.input_tokens ?? null,
+    outputTokens: response.usage?.output_tokens ?? null,
+  };
 }
 
 async function maybeStall(signal: AbortSignal) {
