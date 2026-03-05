@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { UserRole } from "@prisma/client";
 
 import { getServerSessionFromRequest } from "@/lib/auth";
-import { isAdmin } from "@/lib/authz";
+import { isAdmin, isCoach } from "@/lib/authz";
 import { createClient, getClients } from "@/lib/data/store";
 import { isCoachUser } from "@/lib/data/users";
 import { getRequestId } from "@/lib/observability";
@@ -49,7 +49,11 @@ export async function POST(request: Request) {
     return response;
   }
 
-  if (!isAdmin({ id: session.user.id, role: session.user.role })) {
+  const user = { id: session.user.id, role: session.user.role };
+  const admin = isAdmin(user);
+  const coach = isCoach(user);
+
+  if (!admin && !coach) {
     const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 403 });
     response.headers.set("x-request-id", requestId);
     return response;
@@ -78,17 +82,32 @@ export async function POST(request: Request) {
   }
 
   let normalizedCoachId: string | null = null;
-  if (typeof coachId === "string" && coachId.trim().length > 0) {
-    const coachExists = await isCoachUser(coachId);
-    if (!coachExists) {
+  if (admin) {
+    if (typeof coachId === "string" && coachId.trim().length > 0) {
+      const nextCoachId = coachId.trim();
+      const coachExists = await isCoachUser(nextCoachId);
+      if (!coachExists) {
+        const response = jsonNoStore(
+          { error: "Geselecteerde coach bestaat niet." },
+          { status: 400 }
+        );
+        response.headers.set("x-request-id", requestId);
+        return response;
+      }
+      normalizedCoachId = nextCoachId;
+    }
+  } else if (coach) {
+    const requestedCoachId =
+      typeof coachId === "string" ? coachId.trim() : null;
+    if (requestedCoachId && requestedCoachId !== session.user.id) {
       const response = jsonNoStore(
-        { error: "Geselecteerde coach bestaat niet." },
-        { status: 400 }
+        { error: "Coaches kunnen alleen cliënten aan zichzelf koppelen." },
+        { status: 403 }
       );
       response.headers.set("x-request-id", requestId);
       return response;
     }
-    normalizedCoachId = coachId;
+    normalizedCoachId = session.user.id;
   }
 
   const normalizedGoals = Array.isArray(goals)

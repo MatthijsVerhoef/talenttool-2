@@ -1684,7 +1684,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         const errorMessage =
           typeof data.error === "string"
             ? data.error
-            : "Overseer (your coaching supervisor) kon niet reageren.";
+            : "Supervisor (your coaching supervisor) kon niet reageren.";
         throw new Error(`${errorMessage} (requestId: ${responseRequestId})`);
       }
       setOverseerThread(data.thread ?? []);
@@ -1712,13 +1712,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       const payload = new FormData();
       payload.append("file", file);
 
-      const response = await fetch(
-        `/api/clients/${clientId}/documents`,
-        {
-          method: "POST",
-          body: payload,
-        }
-      );
+      const response = await fetch(`/api/clients/${clientId}/documents`, {
+        method: "POST",
+        body: payload,
+      });
       if (!response.ok) throw new Error("Uploaden is mislukt.");
 
       const data = await response.json();
@@ -2026,7 +2023,11 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             .map((goal) => goal.trim())
             .filter((goal) => goal.length > 0),
           ...(avatarUrl ? { avatarUrl } : {}),
-          coachId: newClientForm.coachId ? newClientForm.coachId : null,
+          ...(isAdmin
+            ? {
+                coachId: newClientForm.coachId ? newClientForm.coachId : null,
+              }
+            : {}),
         }),
       });
       const data = await response.json();
@@ -2291,7 +2292,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   : "hover:text-slate-900"
               }`}
             >
-              Overseer (privé)
+              Supervisor (privé)
             </button>
           )}
         </div>
@@ -2690,7 +2691,11 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           {doc.extractionStatus === "READY"
                             ? "Tekst verwerkt"
                             : doc.extractionStatus === "FAILED"
-                            ? `Verwerking mislukt${doc.extractionError ? `: ${doc.extractionError}` : ""}`
+                            ? `Verwerking mislukt${
+                                doc.extractionError
+                                  ? `: ${doc.extractionError}`
+                                  : ""
+                              }`
                             : "Verwerking bezig..."}
                         </p>
                       </div>
@@ -2809,150 +2814,150 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[#242424]">
                   Cliënten
                 </p>
-                {isAdmin && (
-                  <Dialog
-                    open={isCreateClientDialogOpen}
-                    onOpenChange={(open) => {
-                      setCreateClientDialogOpen(open);
-                      if (!open) {
-                        setNewClientForm({
-                          name: "",
-                          focusArea: "",
-                          summary: "",
-                          goals: "",
-                          coachId: "",
-                        });
-                        setNewClientAvatarFile(null);
-                      }
-                    }}
-                  >
-                    <DialogTrigger asChild>
-                      <button className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-100/70">
-                        <Plus className="size-3.5" />
-                        Nieuw
-                      </button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-xl space-y-4">
-                      <DialogHeader>
-                        <DialogTitle>Nieuwe cliënt</DialogTitle>
-                        <DialogDescription>
-                          Voeg een nieuwe coachee toe aan het systeem.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <form
-                        className="space-y-4"
-                        onSubmit={handleNewClientSubmit}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="size-16 rounded-full border border-slate-200 bg-slate-50 text-slate-600 overflow-hidden flex items-center justify-center">
-                            {newClientAvatarFile ? (
-                              <>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={URL.createObjectURL(newClientAvatarFile)}
-                                  alt="Voorbeeld avatar"
-                                  className="size-16 object-cover"
-                                />
-                              </>
-                            ) : newClientInitials ? (
-                              <span className="text-base font-semibold">
-                                {newClientInitials}
-                              </span>
-                            ) : (
-                              <UserRound className="size-6 text-slate-400" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold text-slate-700">
-                              Profielfoto
-                            </p>
-                            <div className="mt-1 flex items-center gap-2">
-                              <input
-                                id={newClientAvatarInputId}
-                                type="file"
-                                accept="image/*"
-                                className="sr-only"
-                                onChange={(event) =>
-                                  setNewClientAvatarFile(
-                                    event.target.files?.[0] ?? null
-                                  )
-                                }
+                <Dialog
+                  open={isCreateClientDialogOpen}
+                  onOpenChange={(open) => {
+                    setCreateClientDialogOpen(open);
+                    if (!open) {
+                      setNewClientForm({
+                        name: "",
+                        focusArea: "",
+                        summary: "",
+                        goals: "",
+                        coachId: "",
+                      });
+                      setNewClientAvatarFile(null);
+                    }
+                  }}
+                >
+                  <DialogTrigger asChild>
+                    <button className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-100/70">
+                      <Plus className="size-3.5" />
+                      Nieuw
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-xl space-y-4">
+                    <DialogHeader>
+                      <DialogTitle>Nieuwe cliënt</DialogTitle>
+                      <DialogDescription>
+                        Voeg een nieuwe coachee toe aan het systeem.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form
+                      className="space-y-4"
+                      onSubmit={handleNewClientSubmit}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="size-16 rounded-full border border-slate-200 bg-slate-50 text-slate-600 overflow-hidden flex items-center justify-center">
+                          {newClientAvatarFile ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={URL.createObjectURL(newClientAvatarFile)}
+                                alt="Voorbeeld avatar"
+                                className="size-16 object-cover"
                               />
-                              <label
-                                htmlFor={newClientAvatarInputId}
-                                className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
-                              >
-                                Kies bestand
-                              </label>
-                              <span className="text-xs text-slate-500">
-                                {newClientAvatarFile
-                                  ? newClientAvatarFile.name
-                                  : "Geen bestand geselecteerd"}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              PNG of JPG, maximaal 5 MB.
-                            </p>
-                          </div>
+                            </>
+                          ) : newClientInitials ? (
+                            <span className="text-base font-semibold">
+                              {newClientInitials}
+                            </span>
+                          ) : (
+                            <UserRound className="size-6 text-slate-400" />
+                          )}
                         </div>
-                        <label className="flex flex-col gap-1 text-sm">
-                          Naam
-                          <input
-                            type="text"
-                            value={newClientForm.name}
-                            onChange={(event) =>
-                              setNewClientForm((form) => ({
-                                ...form,
-                                name: event.target.value,
-                              }))
-                            }
-                            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                            required
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm">
-                          Focusgebied
-                          <input
-                            type="text"
-                            value={newClientForm.focusArea}
-                            onChange={(event) =>
-                              setNewClientForm((form) => ({
-                                ...form,
-                                focusArea: event.target.value,
-                              }))
-                            }
-                            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm">
-                          Samenvatting
-                          <textarea
-                            value={newClientForm.summary}
-                            onChange={(event) =>
-                              setNewClientForm((form) => ({
-                                ...form,
-                                summary: event.target.value,
-                              }))
-                            }
-                            rows={4}
-                            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm">
-                          Doelen (gescheiden door komma)
-                          <textarea
-                            value={newClientForm.goals}
-                            onChange={(event) =>
-                              setNewClientForm((form) => ({
-                                ...form,
-                                goals: event.target.value,
-                              }))
-                            }
-                            rows={3}
-                            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                            placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
-                          />
-                        </label>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">
+                            Profielfoto
+                          </p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <input
+                              id={newClientAvatarInputId}
+                              type="file"
+                              accept="image/*"
+                              className="sr-only"
+                              onChange={(event) =>
+                                setNewClientAvatarFile(
+                                  event.target.files?.[0] ?? null
+                                )
+                              }
+                            />
+                            <label
+                              htmlFor={newClientAvatarInputId}
+                              className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                            >
+                              Kies bestand
+                            </label>
+                            <span className="text-xs text-slate-500">
+                              {newClientAvatarFile
+                                ? newClientAvatarFile.name
+                                : "Geen bestand geselecteerd"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            PNG of JPG, maximaal 5 MB.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex flex-col gap-1 text-sm">
+                        Naam
+                        <input
+                          type="text"
+                          value={newClientForm.name}
+                          onChange={(event) =>
+                            setNewClientForm((form) => ({
+                              ...form,
+                              name: event.target.value,
+                            }))
+                          }
+                          className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                          required
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1 text-sm">
+                        Focusgebied
+                        <input
+                          type="text"
+                          value={newClientForm.focusArea}
+                          onChange={(event) =>
+                            setNewClientForm((form) => ({
+                              ...form,
+                              focusArea: event.target.value,
+                            }))
+                          }
+                          className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1 text-sm">
+                        Samenvatting
+                        <textarea
+                          value={newClientForm.summary}
+                          onChange={(event) =>
+                            setNewClientForm((form) => ({
+                              ...form,
+                              summary: event.target.value,
+                            }))
+                          }
+                          rows={4}
+                          className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1 text-sm">
+                        Doelen (gescheiden door komma)
+                        <textarea
+                          value={newClientForm.goals}
+                          onChange={(event) =>
+                            setNewClientForm((form) => ({
+                              ...form,
+                              goals: event.target.value,
+                            }))
+                          }
+                          rows={3}
+                          className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                          placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
+                        />
+                      </label>
+                      {isAdmin ? (
                         <label className="flex flex-col gap-1 text-sm">
                           Toegewezen coach
                           <select
@@ -2987,26 +2992,31 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             </span>
                           )}
                         </label>
-                        <div className="flex justify-end gap-2 text-sm">
-                          <button
-                            type="button"
-                            onClick={() => setCreateClientDialogOpen(false)}
-                            className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
-                          >
-                            Annuleren
-                          </button>
-                          <button
-                            type="submit"
-                            disabled={isCreatingClient}
-                            className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
-                          >
-                            {isCreatingClient ? "Opslaan..." : "Opslaan"}
-                          </button>
+                      ) : (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          Deze cliënt wordt automatisch aan jouw coachaccount
+                          gekoppeld.
                         </div>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                )}
+                      )}
+                      <div className="flex justify-end gap-2 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => setCreateClientDialogOpen(false)}
+                          className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
+                        >
+                          Annuleren
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isCreatingClient}
+                          className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                        >
+                          {isCreatingClient ? "Opslaan..." : "Opslaan"}
+                        </button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
 
               <ul className="space-y-0.5">
@@ -3919,7 +3929,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             {messages.length === 0 ? (
                               <div className="flex h-fit w-fit py-2 pl-5 pr-7 mt-4 bg-white items-center justify-center gap-2 rounded-3xl m-auto">
                                 <MessageSquare className="size-3.5" />
-                                <p>Start een gesprek met je cliënt.</p>
+                                <p>Start een gesprek met je coach assistent.</p>
                               </div>
                             ) : (
                               messages.map((message) => {
@@ -4110,7 +4120,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           >
                             {overseerThread.length === 0 ? (
                               <div className="rounded-xl border border-slate-200 bg-white p-4 text-slate-500">
-                                Overseer (your coaching supervisor) is privé
+                                Supervisor (your coaching supervisor) is privé
                                 voor jouw account. Vraag naar trends en
                                 signalen.
                               </div>
