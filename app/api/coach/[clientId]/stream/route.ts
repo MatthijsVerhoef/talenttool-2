@@ -87,7 +87,7 @@ function buildCoachSystemPrompt(
   return [
     basePrompt,
     `Cliënt: ${client.name}. Focus: ${client.focusArea}. Samenvatting: ${client.summary}. Doelen: ${goals}.`,
-    "Gedragsregel: als documentcontext aanwezig is, gebruik die actief en zeg nooit dat je geen toegang hebt tot cliëntdocumenten. Als iets ontbreekt, zeg: 'Dit staat niet in de huidige documentcontext.'",
+    "Aanvullende regel: de bovenstaande hoofdprompt uit Prompt Center is leidend. Gebruik documentcontext als extra bron naast chatgeschiedenis en algemene coachkennis. Geef dus ook zonder documentcontext een bruikbaar antwoord. Alleen als iemand expliciet om documentbewijs vraagt dat ontbreekt, zeg: 'Dit staat niet in de huidige documentcontext.'",
     docText,
   ]
     .filter(Boolean)
