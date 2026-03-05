@@ -84,10 +84,17 @@ function buildCoachSystemPrompt(
       ? client.goals.join("; ")
       : "Nog geen doelen vastgelegd";
   const docText = buildDocumentContextSection(documentContextText);
-  return [
+  const primaryPrompt = [
+    "PROMPT_CENTER_COACH_PROMPT (LEIDEND)",
+    "<<<PROMPT_CENTER_COACH_PROMPT>>>",
     basePrompt,
+    "<<<END_PROMPT_CENTER_COACH_PROMPT>>>",
+  ].join("\n");
+
+  return [
+    primaryPrompt,
     `Cliënt: ${client.name}. Focus: ${client.focusArea}. Samenvatting: ${client.summary}. Doelen: ${goals}.`,
-    "Aanvullende regel: de bovenstaande hoofdprompt uit Prompt Center is leidend. Gebruik documentcontext als extra bron naast chatgeschiedenis en algemene coachkennis. Geef dus ook zonder documentcontext een bruikbaar antwoord. Alleen als iemand expliciet om documentbewijs vraagt dat ontbreekt, zeg: 'Dit staat niet in de huidige documentcontext.'",
+    "Aanvullende systeemcontext (niet leidend): gebruik documentcontext als extra bron naast chatgeschiedenis en algemene coachkennis. Als documentcontext ontbreekt of onvolledig is, geef alsnog een bruikbaar inhoudelijk antwoord en stel hooguit een korte vervolgvraag om ontbrekende details op te halen.",
     docText,
   ]
     .filter(Boolean)
