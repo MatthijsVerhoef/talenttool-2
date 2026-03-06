@@ -5,20 +5,37 @@ import {
   buildInviteUrl,
   createUserInvite,
 } from "@/lib/data/users";
+import { sendUserInviteEmail } from "@/lib/email/invitations";
+import { getRequestId } from "@/lib/observability";
 import { prisma } from "@/lib/prisma";
 
+function jsonWithRequestId(requestId: string, body: unknown, init?: ResponseInit) {
+  const response = NextResponse.json(body, init);
+  response.headers.set("x-request-id", requestId);
+  return response;
+}
+
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
   const session = await auth.api.getSession({
     headers: request.headers,
   });
 
   if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Niet geautoriseerd" }, { status: 403 });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Niet geautoriseerd" },
+      { status: 403 }
+    );
   }
 
   const payload = await request.json().catch(() => null);
   if (!payload || typeof payload !== "object") {
-    return NextResponse.json({ error: "Ongeldig verzoek" }, { status: 400 });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Ongeldig verzoek" },
+      { status: 400 }
+    );
   }
 
   const email =
@@ -27,7 +44,8 @@ export async function POST(request: Request) {
       : "";
 
   if (!email) {
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "E-mailadres is verplicht" },
       { status: 400 }
     );
@@ -39,7 +57,8 @@ export async function POST(request: Request) {
   });
 
   if (existingUser) {
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "Er bestaat al een gebruiker met dit e-mailadres." },
       { status: 409 }
     );
@@ -52,7 +71,29 @@ export async function POST(request: Request) {
 
   const inviteUrl = buildInviteUrl(invite.token);
 
-  return NextResponse.json(
+  try {
+    await sendUserInviteEmail({
+      toEmail: email,
+      inviteUrl,
+      inviterName: session.user.name,
+    });
+  } catch (emailError) {
+    return jsonWithRequestId(
+      requestId,
+      {
+        error:
+          emailError instanceof Error
+            ? `Uitnodiging opgeslagen, maar e-mail versturen is mislukt: ${emailError.message}`
+            : "Uitnodiging opgeslagen, maar e-mail versturen is mislukt.",
+        invite,
+        inviteUrl,
+      },
+      { status: 502 }
+    );
+  }
+
+  return jsonWithRequestId(
+    requestId,
     {
       invite,
       inviteUrl,

@@ -52,9 +52,11 @@ function buildInviteToken() {
 
 export function getAppBaseUrl() {
   const envUrl =
+    process.env.INVITE_BASE_URL ??
+    process.env.APP_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
     process.env.NEXT_PUBLIC_SITE_URL ??
-    process.env.APP_URL ??
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ??
     process.env.VERCEL_URL;
 
   if (!envUrl) {

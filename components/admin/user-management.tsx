@@ -121,6 +121,9 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (typeof data.inviteUrl === "string" && data.inviteUrl.length > 0) {
+          setInviteLink(data.inviteUrl);
+        }
         throw new Error(
           data.error ?? "Het versturen van de uitnodiging is mislukt."
         );
