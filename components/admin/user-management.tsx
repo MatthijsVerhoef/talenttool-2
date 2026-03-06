@@ -64,6 +64,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [isCreatingInvite, setCreatingInvite] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   const coachCount = useMemo(
@@ -151,6 +152,46 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
       }, 2000);
     } catch {
       setError("Kopiëren naar het klembord is mislukt.");
+    }
+  }
+
+  async function handleInviteRevoke(inviteId: string) {
+    if (!inviteId || revokingInviteId === inviteId) {
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm("Weet je zeker dat je deze uitnodiging wilt intrekken?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    setRevokingInviteId(inviteId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/invitations/${inviteId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Uitnodiging intrekken is mislukt.");
+      }
+
+      setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
+    } catch (revokeError) {
+      const message =
+        revokeError instanceof Error
+          ? revokeError.message
+          : "Uitnodiging intrekken is mislukt.";
+      setError(message);
+    } finally {
+      setRevokingInviteId((current) =>
+        current === inviteId ? null : current
+      );
     }
   }
 
@@ -347,6 +388,16 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                               Kopieer link
                             </>
                           )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInviteRevoke(invite.id)}
+                          disabled={revokingInviteId === invite.id}
+                          className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          {revokingInviteId === invite.id
+                            ? "Intrekken..."
+                            : "Intrekken"}
                         </button>
                       </div>
                       {invite.createdByName && (

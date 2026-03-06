@@ -203,6 +203,17 @@ export async function markInviteAccepted(inviteId: string, userId: string) {
   });
 }
 
+export async function revokePendingInvite(inviteId: string): Promise<boolean> {
+  const result = await prisma.userInvite.deleteMany({
+    where: {
+      id: inviteId,
+      acceptedAt: null,
+    },
+  });
+
+  return result.count > 0;
+}
+
 export async function listCoaches(): Promise<AdminUserSummary[]> {
   const users = await prisma.user.findMany({
     where: { role: "COACH" },
