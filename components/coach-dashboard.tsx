@@ -167,6 +167,25 @@ function isPendingAgentMessage(message: AgentMessage) {
   return Boolean((message.meta as { pending?: boolean }).pending);
 }
 
+async function clearClientStateAfterSignOut() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.clear();
+  } catch {}
+
+  try {
+    window.sessionStorage.clear();
+  } catch {}
+
+  if (typeof caches !== "undefined") {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.map((name) => caches.delete(name)));
+  }
+}
+
 const toolLinks: Array<{ label: string; icon: LucideIcon }> = [
   { label: "Instellingen", icon: Settings },
 ];
@@ -330,6 +349,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const activeCoachRequestsRef = useRef<Record<string, ActiveCoachRequest>>({});
   const queuedTranscriptByClientIdRef = useRef<Record<string, string>>({});
   const isAdmin = displayUser.role === "ADMIN";
+  const canUseSupervisorChannel =
+    displayUser.role === "ADMIN" || displayUser.role === "COACH";
   const userInitial = displayUser.name?.charAt(0).toUpperCase() ?? "C";
   const settingsSections = useMemo<
     Array<{
@@ -440,10 +461,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [isAdmin, activeSidebarTab]);
 
   useEffect(() => {
-    if (!isAdmin && activeChannel === "meta") {
+    if (!canUseSupervisorChannel && activeChannel === "meta") {
       setActiveChannel("coach");
     }
-  }, [isAdmin, activeChannel]);
+  }, [canUseSupervisorChannel, activeChannel]);
 
   useEffect(() => {
     if (!isMobile && mobileView !== "chat") {
@@ -667,7 +688,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }
 
   const fetchOverseerThread = useCallback(async () => {
-    if (!isAdmin) {
+    if (!canUseSupervisorChannel) {
       setOverseerThread([]);
       return;
     }
@@ -679,7 +700,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     } catch (fetchError) {
       console.error(fetchError);
     }
-  }, [isAdmin]);
+  }, [canUseSupervisorChannel]);
 
   async function fetchClientDocuments(clientId: string) {
     try {
@@ -898,11 +919,15 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [isAdmin]);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canUseSupervisorChannel) {
       void fetchOverseerThread();
-      void fetchOverseerPrompt();
     } else {
       setOverseerThread([]);
+    }
+
+    if (isAdmin) {
+      void fetchOverseerPrompt();
+    } else {
       setOverseerPrompt("");
       setOverseerPromptUpdatedAt(null);
       setReportPrompt("");
@@ -919,6 +944,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     fetchModelSettings,
     fetchOverseerPrompt,
     fetchOverseerThread,
+    canUseSupervisorChannel,
     isAdmin,
   ]);
 
@@ -1886,8 +1912,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     setError(null);
     try {
       await signOutUser();
-      router.push("/login");
-      router.refresh();
+      await clearClientStateAfterSignOut();
+      window.location.replace("/login");
+      return;
     } catch (signOutError) {
       console.error(signOutError);
       setError(
@@ -2283,7 +2310,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           >
             Coach assistent
           </button>
-          {isAdmin && (
+          {canUseSupervisorChannel && (
             <button
               onClick={() => setActiveChannel("meta")}
               className={`rounded-full px-4 py-1.5 transition ${
@@ -3306,6 +3333,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           {/* Footer */}
           <div className="p-3">
             <button
+              type="button"
               onClick={handleSignOut}
               disabled={isSigningOut}
               className="w-full flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100/70 disabled:opacity-50"

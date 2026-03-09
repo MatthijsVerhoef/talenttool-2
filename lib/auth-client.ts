@@ -23,6 +23,7 @@ function getCookieNames() {
 }
 
 type AuthClientResult = {
+  data?: unknown;
   error?: {
     message?: string;
   } | null;
@@ -59,6 +60,31 @@ async function refreshSessionSnapshot(requestId: string) {
       cache: "no-store",
     },
   });
+}
+
+async function getSessionSnapshot(requestId: string) {
+  return authClient.getSession({
+    query: {
+      disableCookieCache: true,
+      disableRefresh: true,
+    },
+    fetchOptions: {
+      headers: {
+        "x-request-id": requestId,
+      },
+      cache: "no-store",
+    },
+  });
+}
+
+function hasActiveSession(result: unknown) {
+  const data = (result as AuthClientResult | undefined)?.data;
+  if (!data || typeof data !== "object") {
+    return false;
+  }
+
+  const sessionData = data as { session?: unknown; user?: unknown };
+  return Boolean(sessionData.session && sessionData.user);
 }
 
 export const authClient = createAuthClient();
@@ -151,6 +177,26 @@ export async function signOutUser() {
   });
   throwIfAuthError(result, "Uitloggen is mislukt.");
   await refreshSessionSnapshot(requestId);
+
+  const firstSnapshot = await getSessionSnapshot(requestId);
+  if (hasActiveSession(firstSnapshot)) {
+    const retryResult = await authClient.signOut({
+      fetchOptions: {
+        headers: {
+          "x-request-id": requestId,
+        },
+        cache: "no-store",
+      },
+    });
+
+    throwIfAuthError(retryResult, "Uitloggen is mislukt.");
+    await refreshSessionSnapshot(requestId);
+
+    const secondSnapshot = await getSessionSnapshot(requestId);
+    if (hasActiveSession(secondSnapshot)) {
+      throw new Error("Uitloggen is niet volledig gelukt. Probeer opnieuw.");
+    }
+  }
 
   if (AUTH_DEBUG_ENABLED) {
     console.info(
