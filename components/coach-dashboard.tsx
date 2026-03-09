@@ -348,9 +348,13 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const userAvatarInputId = useId();
   const activeCoachRequestsRef = useRef<Record<string, ActiveCoachRequest>>({});
   const queuedTranscriptByClientIdRef = useRef<Record<string, string>>({});
-  const isAdmin = displayUser.role === "ADMIN";
+  const normalizedUserRole =
+    typeof displayUser.role === "string"
+      ? displayUser.role.trim().toUpperCase()
+      : "";
+  const isAdmin = normalizedUserRole === "ADMIN";
   const canUseSupervisorChannel =
-    displayUser.role === "ADMIN" || displayUser.role === "COACH";
+    normalizedUserRole === "ADMIN" || normalizedUserRole === "COACH";
   const userInitial = displayUser.name?.charAt(0).toUpperCase() ?? "C";
   const settingsSections = useMemo<
     Array<{

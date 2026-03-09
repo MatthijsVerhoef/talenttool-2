@@ -14,11 +14,11 @@ if (!process.env.AUTH_SECRET) {
 function getAuthBaseUrl() {
   const configured =
     process.env.BETTER_AUTH_URL ??
-    process.env.VERCEL_URL ??
-    process.env.VERCEL_PROJECT_PRODUCTION_URL ??
     process.env.APP_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ??
+    process.env.VERCEL_URL;
 
   if (!configured) {
     const port = process.env.PORT ?? "3000";
@@ -45,6 +45,67 @@ function getAuthBaseUrl() {
   }
 
   return `https://${normalized}`;
+}
+
+function normalizeOrigin(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return null;
+  }
+}
+
+function splitOriginList(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/[\n,;\s]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function getTrustedOrigins() {
+  const runtimePort = process.env.PORT ?? "3000";
+  const candidates = [
+    process.env.BETTER_AUTH_URL,
+    process.env.APP_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_URL,
+    process.env.INVITE_BASE_URL,
+    ...splitOriginList(process.env.BETTER_AUTH_TRUSTED_ORIGINS),
+    ...splitOriginList(process.env.AUTH_TRUSTED_ORIGINS),
+    ...splitOriginList(process.env.TRUSTED_ORIGINS),
+    `http://localhost:${runtimePort}`,
+    "http://localhost:3000",
+  ];
+
+  const origins = new Set<string>();
+
+  for (const candidate of candidates) {
+    const normalizedOrigin = normalizeOrigin(candidate);
+    if (normalizedOrigin) {
+      origins.add(normalizedOrigin);
+    }
+  }
+
+  return Array.from(origins);
 }
 
 const AUTH_DEBUG_ENABLED =
@@ -119,6 +180,7 @@ export async function getServerSessionFromCookieHeader(
 
 export const auth = betterAuth({
   baseURL: getAuthBaseUrl(),
+  trustedOrigins: getTrustedOrigins(),
   secret: process.env.AUTH_SECRET,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   user: {
