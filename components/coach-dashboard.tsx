@@ -1172,16 +1172,30 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         });
       };
 
-      const clearAssistantPending = () => {
+      const finalizeStreamMessages = (
+        persistedUserMessageId?: string,
+        persistedAssistantMessageId?: string,
+      ) => {
         setClientHistories((prev) => {
           const prevHistory = prev[clientId] ?? [];
           return {
             ...prev,
-            [clientId]: prevHistory.map((entry) =>
-              entry.id === assistantTempId
-                ? { ...entry, meta: { ...(entry.meta ?? {}), pending: false } }
-                : entry
-            ),
+            [clientId]: prevHistory.map((entry) => {
+              if (entry.id === userTempId) {
+                return {
+                  ...entry,
+                  id: persistedUserMessageId ?? entry.id,
+                };
+              }
+              if (entry.id === assistantTempId) {
+                return {
+                  ...entry,
+                  id: persistedAssistantMessageId ?? entry.id,
+                  meta: { ...(entry.meta ?? {}), pending: false },
+                };
+              }
+              return entry;
+            }),
           };
         });
       };
@@ -1243,8 +1257,19 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         }
 
         if (name === "done") {
+          const payload = JSON.parse(rawData) as {
+            userMessageId?: unknown;
+            assistantMessageId?: unknown;
+          };
           streamDone = true;
-          clearAssistantPending();
+          finalizeStreamMessages(
+            typeof payload.userMessageId === "string"
+              ? payload.userMessageId
+              : undefined,
+            typeof payload.assistantMessageId === "string"
+              ? payload.assistantMessageId
+              : undefined,
+          );
           return;
         }
 
@@ -2141,6 +2166,10 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }
 
   function openFeedbackDialog(agentType: AgentKindType, message: AgentMessage) {
+    if (message.id.startsWith("temp-")) {
+      setError("Wacht tot het antwoord volledig is opgeslagen.");
+      return;
+    }
     setFeedbackTarget({
       agentType,
       messageId: message.id,
@@ -2172,6 +2201,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         body: JSON.stringify({
           agentType: feedbackTarget.agentType,
           messageId: feedbackTarget.messageId,
+          messageContent: feedbackTarget.messageContent,
           feedback: feedbackText,
         }),
       });
@@ -4025,7 +4055,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                         )}
                                         {isAdmin &&
                                           message.role === "assistant" &&
-                                          isAi && (
+                                          isAi &&
+                                          !isPendingResponse && (
                                             <div className="mt-2 text-[11px]">
                                               <button
                                                 type="button"

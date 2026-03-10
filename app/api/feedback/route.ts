@@ -64,7 +64,12 @@ export async function POST(request: Request) {
     agentType?: string;
     messageId?: string;
     feedback?: string;
+    messageContent?: string;
   };
+  const payloadMessageContent =
+    typeof (payload as { messageContent?: unknown }).messageContent === "string"
+      ? (payload as { messageContent: string }).messageContent.trim()
+      : "";
 
   const agentType = normalizeAgentType(rawAgentType);
   if (!agentType) {
@@ -85,13 +90,16 @@ export async function POST(request: Request) {
     message = await getAgentMessageById(messageId);
   } else {
     message = await getOverseerMessageById(messageId, session.user.id);
+    if (!message) {
+      message = await getOverseerMessageById(messageId);
+    }
   }
 
-  if (!message) {
+  if (!message && !payloadMessageContent) {
     return NextResponse.json({ error: "Bericht niet gevonden." }, { status: 404 });
   }
 
-  if (message.role !== "assistant") {
+  if (message && message.role !== "assistant") {
     return NextResponse.json(
       { error: "Alleen AI-antwoorden kunnen van feedback worden voorzien." },
       { status: 400 },
@@ -101,7 +109,7 @@ export async function POST(request: Request) {
   const saved = await createAgentFeedback({
     agentType,
     messageId,
-    messageContent: message.content,
+    messageContent: message?.content ?? payloadMessageContent,
     feedback: feedback.trim(),
     createdById: session.user.id,
   });

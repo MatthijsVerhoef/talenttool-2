@@ -249,7 +249,7 @@ export async function POST(request: Request, { params }: Params) {
             sessionId: sessionRecord.id,
           });
 
-          await appendClientMessage(
+          const storedUserMessage = await appendClientMessage(
             userId,
             clientId,
             "user",
@@ -342,8 +342,9 @@ export async function POST(request: Request, { params }: Params) {
           }
 
           const trimmedReply = assistantReply.trim();
+          let storedAssistantMessageId: string | null = null;
           if (trimmedReply.length > 0) {
-            await appendClientMessage(
+            const storedAssistantMessage = await appendClientMessage(
               userId,
               clientId,
               "assistant",
@@ -354,11 +355,14 @@ export async function POST(request: Request, { params }: Params) {
               },
               "AI",
             );
+            storedAssistantMessageId = storedAssistantMessage.id;
           }
 
           send("done", {
             requestId,
             clientId,
+            userMessageId: storedUserMessage.id,
+            assistantMessageId: storedAssistantMessageId,
             responseId: completion.responseId,
             usage: completion.usage,
             ...(DEBUG_DOC_CONTEXT

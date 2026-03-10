@@ -1751,12 +1751,12 @@ export async function getAgentMessageById(
 
 export async function getOverseerMessageById(
   messageId: string,
-  coachUserId: string,
+  coachUserId?: string,
 ): Promise<StoredAgentMessage | null> {
   const record = await prisma.overseerMessage.findFirst({
     where: {
       id: messageId,
-      coachUserId,
+      ...(coachUserId ? { coachUserId } : {}),
     },
   });
 
