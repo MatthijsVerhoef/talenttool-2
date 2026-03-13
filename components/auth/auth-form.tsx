@@ -79,7 +79,7 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
     const firstName = formData.get("firstName")?.toString() ?? "";
     const lastName = formData.get("lastName")?.toString() ?? "";
 
-    if (!email || !password || (!firstName.trim() && !lastName.trim())) {
+    if (!email || !password) {
       setError("Vul alle vereiste velden in.");
       return;
     }
