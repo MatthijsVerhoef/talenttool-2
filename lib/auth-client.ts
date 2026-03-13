@@ -154,12 +154,6 @@ export async function signUpWithEmail(input: {
     email: input.email,
     password: input.password,
     name: normalizedName,
-    ...(typeof input.companyName === "string"
-      ? { companyName: input.companyName.trim() }
-      : {}),
-    ...(typeof input.companyLogoUrl === "string"
-      ? { companyLogoUrl: input.companyLogoUrl.trim() }
-      : {}),
     fetchOptions: {
       headers: {
         "x-request-id": requestId,

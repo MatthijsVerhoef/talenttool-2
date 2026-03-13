@@ -16,6 +16,7 @@ datasource db {
 model Client {
   id        String             @id @default(cuid())
   name      String
+  managerName String?
   focusArea String
   summary   String   @db.Text
   avatarUrl String?

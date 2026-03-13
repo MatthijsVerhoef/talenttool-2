@@ -253,6 +253,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [clientForm, setClientForm] = useState({
     name: "",
+    managerName: "",
     focusArea: "",
     summary: "",
     goals: "",
@@ -261,6 +262,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   });
   const [newClientForm, setNewClientForm] = useState({
     name: "",
+    managerName: "",
     focusArea: "",
     summary: "",
     goals: "",
@@ -675,6 +677,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
     setClientForm({
       name: selectedClient.name,
+      managerName: selectedClient.managerName ?? "",
       focusArea: selectedClient.focusArea,
       summary: selectedClient.summary,
       goals: selectedClient.goals.join(", "),
@@ -1997,6 +2000,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         body: JSON.stringify({
           clientId,
           name: clientForm.name,
+          managerName: clientForm.managerName,
           focusArea: clientForm.focusArea,
           summary: clientForm.summary,
           goals: clientForm.goals
@@ -2097,6 +2101,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newClientForm.name,
+          managerName: newClientForm.managerName,
           focusArea: newClientForm.focusArea,
           summary: newClientForm.summary,
           goals: newClientForm.goals
@@ -2124,6 +2129,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       setCreateClientDialogOpen(false);
       setNewClientForm({
         name: "",
+        managerName: "",
         focusArea: "",
         summary: "",
         goals: "",
@@ -2176,7 +2182,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         });
         const uploadData = await uploadResponse.json();
         if (!uploadResponse.ok || !uploadData.url) {
-          throw new Error(uploadData.error ?? "Bedrijfslogo uploaden is mislukt.");
+          throw new Error(
+            uploadData.error ?? "Bedrijfslogo uploaden is mislukt."
+          );
         }
         companyLogoUrl = uploadData.url as string;
       }
@@ -2491,6 +2499,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                       setAvatarFile(null);
                       setClientForm({
                         name: selectedClient.name,
+                        managerName: selectedClient.managerName ?? "",
                         focusArea: selectedClient.focusArea,
                         summary: selectedClient.summary,
                         goals: selectedClient.goals.join(", "),
@@ -2586,6 +2595,21 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                         }
                         className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
                         required
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      Leidinggevende
+                      <input
+                        type="text"
+                        value={clientForm.managerName}
+                        onChange={(event) =>
+                          setClientForm((form) => ({
+                            ...form,
+                            managerName: event.target.value,
+                          }))
+                        }
+                        className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        placeholder="Naam leidinggevende"
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
@@ -2903,32 +2927,32 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           {/* Header */}
           <div className="">
             <div className="space-y-3 px-3">
-              {!isAdmin && (displayUser.companyName || displayUser.companyLogoUrl) && (
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-3 py-2.5">
-                  <div className="size-10 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-700">
-                    {displayUser.companyLogoUrl ? (
-                      <Image
-                        src={displayUser.companyLogoUrl}
-                        alt={displayUser.companyName ?? "Bedrijfslogo"}
-                        width={40}
-                        height={40}
-                        className="size-10 object-cover"
-                        unoptimized
-                      />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center text-xs font-semibold">
-                        {getInitials(displayUser.companyName) || "B"}
-                      </span>
-                    )}
+              {!isAdmin &&
+                (displayUser.companyName || displayUser.companyLogoUrl) && (
+                  <div className="flex items-center">
+                    <div className="size-7 shrink-0 overflow-hidden bg-transparent flex items-center justify-center">
+                      {displayUser.companyLogoUrl ? (
+                        <Image
+                          src={displayUser.companyLogoUrl}
+                          alt={displayUser.companyName ?? "Bedrijfslogo"}
+                          width={40}
+                          height={40}
+                          className="size-4.5 object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-xs font-semibold">
+                          {getInitials(displayUser.companyName) || "B"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0 ml-1.5 leading-tight">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {displayUser.companyName}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0 leading-tight">
-                    <p className="truncate text-sm font-semibold text-slate-900">
-                      {displayUser.companyName}
-                    </p>
-                    <p className="text-xs text-slate-500">Jouw branding</p>
-                  </div>
-                </div>
-              )}
+                )}
 
               <div className="flex items-center gap-3">
                 <div className="size-9 shrink-0 rounded-full bg-slate-900 text-white overflow-hidden ring-1 ring-slate-900/10">
@@ -2975,6 +2999,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                     if (!open) {
                       setNewClientForm({
                         name: "",
+                        managerName: "",
                         focusArea: "",
                         summary: "",
                         goals: "",
@@ -3066,6 +3091,21 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           }
                           className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
                           required
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1 text-sm">
+                        Leidinggevende
+                        <input
+                          type="text"
+                          value={newClientForm.managerName}
+                          onChange={(event) =>
+                            setNewClientForm((form) => ({
+                              ...form,
+                              managerName: event.target.value,
+                            }))
+                          }
+                          className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                          placeholder="Naam leidinggevende"
                         />
                       </label>
                       <label className="flex flex-col gap-1 text-sm">
@@ -3443,7 +3483,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                 onChange={(event) =>
                                                   setUserForm((form) => ({
                                                     ...form,
-                                                    companyName: event.target.value,
+                                                    companyName:
+                                                      event.target.value,
                                                   }))
                                                 }
                                                 autoComplete="organization"
@@ -3466,8 +3507,13 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                   />
                                                 ) : userForm.companyLogoUrl ? (
                                                   <Image
-                                                    src={userForm.companyLogoUrl}
-                                                    alt={userForm.companyName || "Bedrijfslogo"}
+                                                    src={
+                                                      userForm.companyLogoUrl
+                                                    }
+                                                    alt={
+                                                      userForm.companyName ||
+                                                      "Bedrijfslogo"
+                                                    }
                                                     width={56}
                                                     height={56}
                                                     className="size-14 object-cover"
@@ -3475,7 +3521,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                   />
                                                 ) : (
                                                   <span className="text-sm font-semibold">
-                                                    {getInitials(userForm.companyName) || "B"}
+                                                    {getInitials(
+                                                      userForm.companyName
+                                                    ) || "B"}
                                                   </span>
                                                 )}
                                               </div>
@@ -3491,8 +3539,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                     className="sr-only"
                                                     onChange={(event) =>
                                                       setCompanyLogoFile(
-                                                        event.target.files?.[0] ??
-                                                          null
+                                                        event.target
+                                                          .files?.[0] ?? null
                                                       )
                                                     }
                                                   />

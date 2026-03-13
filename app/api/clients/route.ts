@@ -66,8 +66,9 @@ export async function POST(request: Request) {
     return response;
   }
 
-  const { name, focusArea, summary, goals, avatarUrl, coachId } = payload as {
+  const { name, managerName, focusArea, summary, goals, avatarUrl, coachId } = payload as {
     name?: string;
+    managerName?: string;
     focusArea?: string;
     summary?: string;
     goals?: string[];
@@ -116,6 +117,7 @@ export async function POST(request: Request) {
 
   const client = await createClient({
     name,
+    managerName: typeof managerName === "string" ? managerName : "",
     focusArea: typeof focusArea === "string" ? focusArea : "",
     summary: typeof summary === "string" ? summary : "",
     goals: normalizedGoals,

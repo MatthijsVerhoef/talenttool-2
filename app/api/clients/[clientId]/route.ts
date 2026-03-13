@@ -73,8 +73,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return response;
   }
 
-  const { name, focusArea, summary, goals, avatarUrl, coachId } = payload as {
+  const { name, managerName, focusArea, summary, goals, avatarUrl, coachId } = payload as {
     name?: string;
+    managerName?: string;
     focusArea?: string;
     summary?: string;
     goals?: string[];
@@ -128,7 +129,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
   }
 
-  if (!name && !focusArea && !summary && !goals && !hasCoachUpdate) {
+  const hasManagerNameUpdate = Object.prototype.hasOwnProperty.call(
+    payload,
+    "managerName"
+  );
+
+  if (!name && !managerName && !focusArea && !summary && !goals && !hasCoachUpdate && !hasManagerNameUpdate) {
     const response = jsonNoStore(
       { error: "Geen wijzigingen doorgegeven" },
       { status: 400 }
@@ -139,12 +145,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   const updatePayload: {
     name?: string;
+    managerName?: string;
     focusArea?: string;
     summary?: string;
     goals?: string[];
     coachId?: string | null;
   } = {
     name,
+    ...(hasManagerNameUpdate ? { managerName } : {}),
     focusArea,
     summary,
     goals,

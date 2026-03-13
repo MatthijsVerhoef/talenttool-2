@@ -3,6 +3,7 @@ import { APIError } from "better-auth";
 
 import { auth } from "@/lib/auth";
 import { deleteFromBlob, uploadToBlob } from "@/lib/blob";
+import { updateUserProfile } from "@/lib/data/store";
 import {
   findActiveInviteByToken,
   markInviteAccepted,
@@ -109,8 +110,6 @@ export async function POST(
         name: normalizedName,
         email: invite.email,
         password: password.trim(),
-        ...(normalizedCompanyName ? { companyName: normalizedCompanyName } : {}),
-        ...(companyLogoUrl ? { companyLogoUrl } : {}),
       },
       headers: request.headers,
       returnHeaders: true,
@@ -118,6 +117,15 @@ export async function POST(
     });
 
     const createdUser = signUpResult.response.user;
+
+    if (normalizedCompanyName || companyLogoUrl) {
+      await updateUserProfile(createdUser.id, {
+        ...(normalizedCompanyName
+          ? { companyName: normalizedCompanyName }
+          : {}),
+        ...(companyLogoUrl ? { companyLogoUrl } : {}),
+      });
+    }
 
     await markInviteAccepted(invite.id, createdUser.id);
 

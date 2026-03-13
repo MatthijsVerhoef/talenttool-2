@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { CoachDashboard } from "@/components/coach-dashboard";
 import { getServerSessionFromCookieHeader } from "@/lib/auth";
-import { getClients } from "@/lib/data/store";
+import { getClients, getUserBranding } from "@/lib/data/store";
 import { syncUserRole } from "@/lib/user-role";
 import type { UserRole } from "@prisma/client";
 
@@ -27,9 +27,12 @@ export default async function Home() {
     session.user.role as UserRole | undefined
   );
 
+  const branding = await getUserBranding(session.user.id);
+
   const normalizedUser = {
     ...session.user,
     role: normalizedRole,
+    ...branding,
   } as typeof session.user & { role: UserRole };
 
   const clients = await getClients({

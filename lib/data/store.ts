@@ -44,6 +44,7 @@ export interface OverseerMessageContext {
 export interface ClientProfile {
   id: string;
   name: string;
+  managerName?: string | null;
   focusArea: string;
   summary: string;
   goals: string[];
@@ -373,6 +374,7 @@ export async function updateClientProfile(
   clientId: string,
   data: {
     name?: string;
+    managerName?: string;
     focusArea?: string;
     summary?: string;
     goals?: string[];
@@ -381,6 +383,9 @@ export async function updateClientProfile(
 ): Promise<ClientProfile> {
   const updateData: Prisma.ClientUpdateInput = {
     ...(data.name ? { name: data.name } : {}),
+    ...(data.managerName !== undefined
+      ? { managerName: data.managerName.trim() || null }
+      : {}),
     ...(data.focusArea ? { focusArea: data.focusArea } : {}),
     ...(data.summary ? { summary: data.summary } : {}),
     ...(data.coachId !== undefined ? { coachId: data.coachId || null } : {}),
@@ -405,6 +410,7 @@ export async function updateClientProfile(
 
 export async function createClient(data: {
   name: string;
+  managerName?: string;
   focusArea?: string;
   summary?: string;
   goals?: string[];
@@ -414,6 +420,7 @@ export async function createClient(data: {
   const client = await prisma.client.create({
     data: {
       name: data.name.trim(),
+      managerName: data.managerName?.trim() || null,
       focusArea: data.focusArea?.trim() ?? "",
       summary: data.summary?.trim() ?? "",
       avatarUrl: data.avatarUrl ?? null,
@@ -455,12 +462,83 @@ export async function updateUserProfile(
     companyLogoUrl?: string | null;
   }
 ) {
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data,
-  });
+  const { companyName, companyLogoUrl, ...profileData } = data;
 
-  return user;
+  const user = Object.keys(profileData).length
+    ? await prisma.user.update({
+        where: { id: userId },
+        data: profileData,
+      })
+    : await prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+      });
+
+  const hasBrandingUpdate =
+    companyName !== undefined || companyLogoUrl !== undefined;
+
+  if (!hasBrandingUpdate) {
+    return {
+      ...user,
+      ...(await getUserBranding(userId)),
+    };
+  }
+
+  const updateAssignments: Prisma.Sql[] = [];
+
+  if (companyName !== undefined) {
+    updateAssignments.push(
+      Prisma.sql`"companyName" = ${companyName?.trim() || null}`
+    );
+  }
+
+  if (companyLogoUrl !== undefined) {
+    updateAssignments.push(
+      Prisma.sql`"companyLogoUrl" = ${companyLogoUrl?.trim() || null}`
+    );
+  }
+
+  updateAssignments.push(Prisma.sql`"updatedAt" = NOW()`);
+
+  await prisma.$executeRaw(
+    Prisma.sql`
+      UPDATE "User"
+      SET ${Prisma.join(updateAssignments, ", ")}
+      WHERE "id" = ${userId}
+    `
+  );
+
+  return {
+    ...user,
+    ...(await getUserBranding(userId)),
+  };
+}
+
+export async function getUserBranding(userId: string): Promise<{
+  companyName: string | null;
+  companyLogoUrl: string | null;
+}> {
+  if (!userId) {
+    return {
+      companyName: null,
+      companyLogoUrl: null,
+    };
+  }
+
+  const rows = await prisma.$queryRaw<
+    Array<{ companyName: string | null; companyLogoUrl: string | null }>
+  >`
+    SELECT "companyName", "companyLogoUrl"
+    FROM "User"
+    WHERE "id" = ${userId}
+    LIMIT 1
+  `;
+
+  return (
+    rows[0] ?? {
+      companyName: null,
+      companyLogoUrl: null,
+    }
+  );
 }
 
 export type MessageSource = "AI" | "HUMAN";
@@ -620,6 +698,7 @@ function mapClientProfile(client: ClientWithGoals): ClientProfile {
   return {
     id: client.id,
     name: client.name,
+    managerName: client.managerName,
     focusArea: client.focusArea,
     summary: client.summary,
     goals: client.goals.map((goal) => goal.value),
