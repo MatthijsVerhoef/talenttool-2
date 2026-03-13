@@ -18,7 +18,7 @@ const DEBUG_DOC_CONTEXT = process.env.DEBUG_DOC_CONTEXT === "1";
 function jsonWithRequestId(
   requestId: string,
   body: unknown,
-  init?: ResponseInit,
+  init?: ResponseInit
 ) {
   const response = NextResponse.json(body, init);
   response.headers.set("x-request-id", requestId);
@@ -54,7 +54,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -71,8 +71,8 @@ export async function GET(request: Request, { params }: RouteParams) {
       });
       return jsonWithRequestId(
         requestId,
-        { error: "Cliënt ontbreekt." },
-        { status: 400 },
+        { error: "Coachee ontbreekt." },
+        { status: 400 }
       );
     }
 
@@ -80,7 +80,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       await assertCanAccessClient(
         { id: session.user.id, role: session.user.role },
         clientId,
-        { requestId, route, clientId },
+        { requestId, route, clientId }
       );
     } catch (error) {
       if (error instanceof ForbiddenError) {
@@ -97,7 +97,7 @@ export async function GET(request: Request, { params }: RouteParams) {
         return jsonWithRequestId(
           requestId,
           { error: error.message },
-          { status: 403 },
+          { status: 403 }
         );
       }
       throw error;
@@ -105,7 +105,9 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     const { searchParams } = new URL(request.url);
     const limitParam = Number(searchParams.get("limit") ?? "5");
-    const limit = Number.isNaN(limitParam) ? 5 : Math.max(1, Math.min(limitParam, 20));
+    const limit = Number.isNaN(limitParam)
+      ? 5
+      : Math.max(1, Math.min(limitParam, 20));
 
     const reports = await listClientReports(clientId, limit);
     const durationMs = Date.now() - startedAt;
@@ -133,7 +135,7 @@ export async function GET(request: Request, { params }: RouteParams) {
     return jsonWithRequestId(
       requestId,
       { error: "Rapport ophalen is mislukt." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -166,7 +168,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -184,8 +186,8 @@ export async function POST(request: Request, { params }: RouteParams) {
       });
       return jsonWithRequestId(
         requestId,
-        { error: "Cliënt ontbreekt." },
-        { status: 400 },
+        { error: "Coachee ontbreekt." },
+        { status: 400 }
       );
     }
 
@@ -193,7 +195,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       await assertCanAccessClient(
         { id: session.user.id, role: session.user.role },
         clientId,
-        { requestId, route, clientId },
+        { requestId, route, clientId }
       );
     } catch (error) {
       if (error instanceof ForbiddenError) {
@@ -210,7 +212,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         return jsonWithRequestId(
           requestId,
           { error: error.message },
-          { status: 403 },
+          { status: 403 }
         );
       }
       throw error;
@@ -223,7 +225,9 @@ export async function POST(request: Request, { params }: RouteParams) {
       role: session.user.role,
     });
     const documentIds = Array.from(
-      new Set((result.documentContextSources ?? []).map((source) => source.documentId)),
+      new Set(
+        (result.documentContextSources ?? []).map((source) => source.documentId)
+      )
     );
     const durationMs = Date.now() - startedAt;
     logInfo("api.client-report.post.end", {
@@ -274,10 +278,10 @@ export async function POST(request: Request, { params }: RouteParams) {
     const status = isTimeout
       ? 504
       : isRateLimit
-        ? 429
-        : message.includes("niet gevonden")
-          ? 404
-          : 500;
+      ? 429
+      : message.includes("niet gevonden")
+      ? 404
+      : 500;
     logError("api.client-report.post.error", {
       requestId,
       route,
@@ -286,7 +290,9 @@ export async function POST(request: Request, { params }: RouteParams) {
       status,
       errorMessage: message,
       retryAfterMs:
-        error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
+        error instanceof OpenAIRateLimitError
+          ? error.retryAfterMs ?? null
+          : null,
     });
     return jsonWithRequestId(
       requestId,
@@ -294,13 +300,15 @@ export async function POST(request: Request, { params }: RouteParams) {
         error: isTimeout
           ? "Rapportgeneratie reageerde niet binnen de ingestelde tijd."
           : isRateLimit
-            ? "Rapportgeneratie is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
-            : message,
+          ? "Rapportgeneratie is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
+          : message,
         retryAfterMs:
-          error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
+          error instanceof OpenAIRateLimitError
+            ? error.retryAfterMs ?? null
+            : null,
         requestId,
       },
-      { status },
+      { status }
     );
   }
 }

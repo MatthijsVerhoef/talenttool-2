@@ -183,13 +183,13 @@
 //       {
 //         coachUserId: seedCoach.id,
 //         role: 'system',
-//         content: 'Wekelijkse voortgangsrapportages zijn nu beschikbaar voor alle actieve cliënten',
+//         content: 'Wekelijkse voortgangsrapportages zijn nu beschikbaar voor alle actieve coachees',
 //         meta: { type: 'feature_update', feature: 'reporting' },
 //       },
 //       {
 //         coachUserId: seedCoach.id,
 //         role: 'admin',
-//         content: 'Coachingresultaten Q4 2024: 87% van de cliënten behaalde ten minste één belangrijk doel',
+//         content: 'Coachingresultaten Q4 2024: 87% van de coachees behaalde ten minste één belangrijk doel',
 //         meta: { type: 'metrics', period: 'Q4-2024' },
 //       },
 //       {

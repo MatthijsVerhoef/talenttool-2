@@ -19,7 +19,7 @@ import { getRequestId, logError, logInfo } from "@/lib/observability";
 function jsonWithRequestId(
   requestId: string,
   body: unknown,
-  init?: ResponseInit,
+  init?: ResponseInit
 ) {
   const response = NextResponse.json(body, init);
   response.headers.set("x-request-id", requestId);
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -71,7 +71,7 @@ export async function GET(request: Request) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
     return jsonWithRequestId(
       requestId,
       { error: "Overzichtscoach is tijdelijk niet bereikbaar." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -159,7 +159,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const message = (body?.message ?? "").toString().trim();
     const conversationId =
-      typeof body?.conversationId === "string" ? body.conversationId : undefined;
+      typeof body?.conversationId === "string"
+        ? body.conversationId
+        : undefined;
     const clientId =
       typeof body?.clientId === "string" && body.clientId.trim().length > 0
         ? body.clientId.trim()
@@ -194,7 +196,7 @@ export async function POST(request: Request) {
       return jsonWithRequestId(
         requestId,
         { error: "Bericht is verplicht." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -225,7 +227,7 @@ export async function POST(request: Request) {
           return jsonWithRequestId(
             requestId,
             { error: error.message },
-            { status: 403 },
+            { status: 403 }
           );
         }
         throw error;
@@ -235,7 +237,7 @@ export async function POST(request: Request) {
     if (coachingSessionId) {
       const coachingSession = await getOwnedCoachingSession(
         coachUserId,
-        coachingSessionId,
+        coachingSessionId
       );
       if (!coachingSession) {
         const durationMs = Date.now() - startedAt;
@@ -256,7 +258,7 @@ export async function POST(request: Request) {
         return jsonWithRequestId(
           requestId,
           { error: "Geen toegang tot deze coachsessie." },
-          { status: 403 },
+          { status: 403 }
         );
       }
       if (clientId && coachingSession.clientId !== clientId) {
@@ -277,8 +279,8 @@ export async function POST(request: Request) {
         });
         return jsonWithRequestId(
           requestId,
-          { error: "Context bevat een ongeldige cliënt/sessie-combinatie." },
-          { status: 403 },
+          { error: "Context bevat een ongeldige Coachee/sessie-combinatie." },
+          { status: 403 }
         );
       }
     }
@@ -286,7 +288,7 @@ export async function POST(request: Request) {
     if (sourceAgentMessageId) {
       const sourceMessage = await getOwnedAgentMessage(
         coachUserId,
-        sourceAgentMessageId,
+        sourceAgentMessageId
       );
       if (!sourceMessage) {
         const durationMs = Date.now() - startedAt;
@@ -307,7 +309,7 @@ export async function POST(request: Request) {
         return jsonWithRequestId(
           requestId,
           { error: "Geen toegang tot dit bronbericht." },
-          { status: 403 },
+          { status: 403 }
         );
       }
       if (coachingSessionId && sourceMessage.sessionId !== coachingSessionId) {
@@ -329,10 +331,9 @@ export async function POST(request: Request) {
         return jsonWithRequestId(
           requestId,
           {
-            error:
-              "Context bevat een ongeldige sessie/bronbericht-combinatie.",
+            error: "Context bevat een ongeldige sessie/bronbericht-combinatie.",
           },
-          { status: 403 },
+          { status: 403 }
         );
       }
       if (clientId && sourceMessage.clientId !== clientId) {
@@ -353,8 +354,11 @@ export async function POST(request: Request) {
         });
         return jsonWithRequestId(
           requestId,
-          { error: "Context bevat een ongeldige cliënt/bronbericht-combinatie." },
-          { status: 403 },
+          {
+            error:
+              "Context bevat een ongeldige Coachee/bronbericht-combinatie.",
+          },
+          { status: 403 }
         );
       }
     }
@@ -418,7 +422,7 @@ export async function POST(request: Request) {
           : "Overzichtscoach is tijdelijk niet bereikbaar.",
         requestId,
       },
-      { status },
+      { status }
     );
   }
 }

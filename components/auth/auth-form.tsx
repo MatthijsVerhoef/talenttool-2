@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, UserRound } from "lucide-react";
+import { Building2, ImagePlus, Lock, Mail, UserRound } from "lucide-react";
 
 import { signInWithEmail, signUpWithEmail } from "@/lib/auth-client";
 
@@ -19,6 +19,8 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
+  const [companyLogoFile, setCompanyLogoFile] = useState<File | null>(null);
+  const companyLogoInputId = useId();
 
   const isInviteFlow = Boolean(invite);
   const isSignUp = isInviteFlow;
@@ -38,9 +40,16 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
     const formData = new FormData(event.currentTarget);
     const email = invite?.email ?? formData.get("email")?.toString() ?? "";
     const password = formData.get("password")?.toString() ?? "";
-    const name = formData.get("name")?.toString() ?? "";
+    const firstName = formData.get("firstName")?.toString() ?? "";
+    const lastName = formData.get("lastName")?.toString() ?? "";
+    const companyName = formData.get("companyName")?.toString() ?? "";
 
-    if (!email || !password || (isSignUp && !name)) {
+    if (
+      !email ||
+      !password ||
+      (isSignUp && !firstName.trim() && !lastName.trim()) ||
+      (isInviteFlow && !companyName.trim())
+    ) {
       setError("Vul alle vereiste velden in.");
       return;
     }
@@ -57,31 +66,31 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
     try {
       if (isSignUp) {
         if (invite) {
-          const response = await fetch(
-            `/api/invitations/${invite.token}/accept`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                name,
-                password,
-              }),
-            }
-          );
+          const inviteFormData = new FormData();
+          inviteFormData.set("firstName", firstName);
+          inviteFormData.set("lastName", lastName);
+          inviteFormData.set("companyName", companyName);
+          inviteFormData.set("password", password);
+          if (companyLogoFile) {
+            inviteFormData.set("companyLogo", companyLogoFile);
+          }
+
+          const response = await fetch(`/api/invitations/${invite.token}/accept`, {
+            method: "POST",
+            body: inviteFormData,
+          });
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
-            throw new Error(
-              data.error ?? "Uitnodiging accepteren is mislukt."
-            );
+            throw new Error(data.error ?? "Uitnodiging accepteren is mislukt.");
           }
           setSuccess("Welkom! Je account is aangemaakt.");
         } else {
           await signUpWithEmail({
             email,
             password,
-            name,
+            firstName,
+            lastName,
+            companyName,
           });
           setSuccess("Account aangemaakt. Je wordt doorgestuurd...");
         }
@@ -113,7 +122,7 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
         src="/talenttool-bg.png"
         className="absolute top-0 left-0 w-screen h-screen"
       />
-      <div className="w-full relative z-2 max-w-sm h-140 space-y-6 flex flex-col items-center py-13 rounded-3xl bg-white/60 backdrop-blur-2xl p-8 shadow-md">
+      <div className="w-full relative z-2 max-w-sm  space-y-6 flex flex-col items-center py-13 rounded-3xl bg-white/60 backdrop-blur-2xl p-8 shadow-md">
         <div className="text-center w-full">
           <img alt="logo" className="mx-auto mb-4" src="/talenttool-logo.svg" />
           <p className="mt-2 text-sm text-slate-500">
@@ -130,25 +139,83 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
 
         <form onSubmit={handleSubmit} className="space-y-4 w-full">
           {isSignUp && (
-            <label className="block text-sm font-medium text-slate-700">
-              <span className="ml-3">Naam</span>
-              <div className="mt-1 flex items-center rounded-full border border-gray-200 pl-4 pr-3 py-2">
-                <UserRound className="mr-2 h-4 w-4 text-slate-400" />
+            <div className="grid gap-4 sm:grid-cols-1">
+              <label className="block text-sm font-medium text-slate-700">
+                <span className="ml-3">Voornaam</span>
+                <div className="mt-1 flex items-center rounded-full border border-[#dddddd] pl-4 pr-3 py-2">
+                  <UserRound className="mr-2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    name="firstName"
+                    autoComplete="given-name"
+                    placeholder="Voornaam"
+                    className="w-full h-8 border-none bg-transparent text-sm text-slate-900 placeholder:text-gray-400 focus:outline-none"
+                    required
+                  />
+                </div>
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                <span className="ml-3">Achternaam</span>
+                <div className="mt-1 flex items-center rounded-full border border-[#dddddd] pl-4 pr-3 py-2">
+                  <UserRound className="mr-2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    name="lastName"
+                    autoComplete="family-name"
+                    placeholder="Achternaam"
+                    className="w-full h-8 border-none bg-transparent text-sm text-slate-900 placeholder:text-gray-400 focus:outline-none"
+                  />
+                </div>
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                <span className="ml-3">Bedrijfsnaam</span>
+                <div className="mt-1 flex items-center rounded-full border border-[#dddddd] pl-4 pr-3 py-2">
+                  <Building2 className="mr-2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    name="companyName"
+                    autoComplete="organization"
+                    placeholder="Bedrijfsnaam"
+                    className="w-full h-8 border-none bg-transparent text-sm text-slate-900 placeholder:text-gray-400 focus:outline-none"
+                    required
+                  />
+                </div>
+              </label>
+
+              <div className="space-y-2 rounded-2xl border border-[#dddddd] bg-white/70 px-4 py-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <ImagePlus className="h-4 w-4 text-slate-400" />
+                  Logo (optioneel)
+                </div>
                 <input
-                  type="text"
-                  name="name"
-                  autoComplete="name"
-                  placeholder="Voor- en achternaam"
-                  className="w-full h-8 border-none bg-transparent text-sm text-slate-900 placeholder:text-gray-400 focus:outline-none"
-                  required
+                  id={companyLogoInputId}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                  className="hidden"
+                  onChange={(event) =>
+                    setCompanyLogoFile(event.target.files?.[0] ?? null)
+                  }
                 />
+                <div className="flex items-center justify-between gap-3">
+                  <label
+                    htmlFor={companyLogoInputId}
+                    className="inline-flex cursor-pointer items-center rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Kies bestand
+                  </label>
+                  <span className="truncate text-xs text-slate-500">
+                    {companyLogoFile ? companyLogoFile.name : "Geen bestand geselecteerd"}
+                  </span>
+                </div>
               </div>
-            </label>
+            </div>
           )}
 
           <label className="block text-sm font-medium text-slate-700">
             <span className="ml-3">E-mailadres</span>
-            <div className="mt-1 flex items-center rounded-full border border-gray-200 pl-4 pr-3 py-2">
+            <div className="mt-1 flex items-center rounded-full border border-[#dddddd] pl-4 pr-3 py-2">
               <Mail className="mr-2 h-4 w-4 text-slate-400" />
               <input
                 type="email"
@@ -165,7 +232,7 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
 
           <label className="block text-sm font-medium text-slate-700">
             <span className="ml-3">Wachtwoord</span>
-            <div className="mt-1 flex items-center rounded-full border border-gray-200 pr-3 pl-4 py-2">
+            <div className="mt-1 flex items-center rounded-full border border-[#dddddd] pr-3 pl-4 py-2">
               <Lock className="mr-2 h-4 w-4 text-slate-400" />
               <input
                 type="password"
@@ -199,8 +266,8 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
             {isSubmitting
               ? "Even geduld..."
               : isSignUp
-                ? "Account aanmaken"
-                : "Inloggen"}
+              ? "Account aanmaken"
+              : "Inloggen"}
           </button>
         </form>
 

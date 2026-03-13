@@ -33,12 +33,12 @@ type ChatRole = "user" | "assistant" | "system";
 const COACH_DOCUMENT_CONTEXT_BUDGET_CHARS = Number(
   process.env.COACH_DOCUMENT_CONTEXT_BUDGET_CHARS ??
     process.env.DOCUMENT_CONTEXT_BUDGET_CHARS ??
-    "6000",
+    "6000"
 );
 const REPORT_DOCUMENT_CONTEXT_BUDGET_CHARS = Number(
   process.env.REPORT_DOCUMENT_CONTEXT_BUDGET_CHARS ??
     process.env.DOCUMENT_CONTEXT_BUDGET_CHARS ??
-    "8000",
+    "8000"
 );
 
 function normalizeRole(role: string): ChatRole {
@@ -81,11 +81,15 @@ interface ScopedAgentRunContext extends AgentRunContext {
 
 function summarizeDocumentContext(
   contextText: string,
-  sources: DocumentContextSource[] | undefined,
+  sources: DocumentContextSource[] | undefined
 ) {
   const safeSources = sources ?? [];
-  const documentIds = Array.from(new Set(safeSources.map((source) => source.documentId)));
-  const filenames = Array.from(new Set(safeSources.map((source) => source.filename)));
+  const documentIds = Array.from(
+    new Set(safeSources.map((source) => source.documentId))
+  );
+  const filenames = Array.from(
+    new Set(safeSources.map((source) => source.filename))
+  );
   return {
     contextChars: contextText.length,
     contextChunkCount: safeSources.length,
@@ -99,7 +103,7 @@ export async function runCoachAgent(
   options: {
     clientId: string;
     userMessage: string;
-  } & ScopedAgentRunContext,
+  } & ScopedAgentRunContext
 ): Promise<AgentReply> {
   const { clientId, userMessage, requestId, userId, role, conversationId } =
     options;
@@ -116,7 +120,7 @@ export async function runCoachAgent(
     const { result, durationMs } = await withTimer(async () => {
       const client = await getClient(clientId);
       if (!client) {
-        throw new Error(`Cliënt ${clientId} niet gevonden.`);
+        throw new Error(`Coachee ${clientId} niet gevonden.`);
       }
 
       await appendClientMessage(
@@ -125,7 +129,7 @@ export async function runCoachAgent(
         "user",
         userMessage,
         undefined,
-        "HUMAN",
+        "HUMAN"
       );
 
       const history = (await getSessionWindow(userId, clientId)) ?? [];
@@ -146,7 +150,7 @@ export async function runCoachAgent(
           content: buildCoachSystemPrompt(
             coachPrompt,
             client,
-            documentContext.contextText,
+            documentContext.contextText
           ),
         },
         ...history.map((message) => ({
@@ -157,7 +161,7 @@ export async function runCoachAgent(
       const systemPrompt = messages[0]?.content ?? "";
       const contextStats = summarizeDocumentContext(
         documentContext.contextText,
-        documentContext.sources,
+        documentContext.sources
       );
       logInfo("agent.coach.context.attached", {
         requestId: requestId ?? null,
@@ -167,7 +171,9 @@ export async function runCoachAgent(
         historyCount: history.length,
         messagesCount: messages.length,
         systemPromptChars: systemPrompt.length,
-        hasContextBoundary: systemPrompt.includes("<<<CLIENT_DOCUMENT_CONTEXT>>>"),
+        hasContextBoundary: systemPrompt.includes(
+          "<<<CLIENT_DOCUMENT_CONTEXT>>>"
+        ),
         ...contextStats,
       });
 
@@ -199,9 +205,12 @@ export async function runCoachAgent(
         {
           responseId: completion.responseId,
           usage: completion.usage,
-          layers: layered.layers.map((layer) => ({ id: layer.id, name: layer.name })),
+          layers: layered.layers.map((layer) => ({
+            id: layer.id,
+            name: layer.name,
+          })),
         },
-        "AI",
+        "AI"
       );
 
       return {
@@ -250,7 +259,7 @@ export async function runOverseerAgent(
     coachUserId: string;
     userMessage: string;
     context?: OverseerMessageContext;
-  } & AgentRunContext,
+  } & AgentRunContext
 ): Promise<AgentReply> {
   const { coachUserId, userMessage, requestId, conversationId, context } =
     options;
@@ -271,7 +280,7 @@ export async function runOverseerAgent(
       });
 
       const clientDigests = (await listClientDigestsForCoach(coachUserId)).join(
-        "\n\n",
+        "\n\n"
       );
       const history = (await getOverseerWindow(coachUserId))
         .filter((message) => message.role !== "system")
@@ -281,7 +290,8 @@ export async function runOverseerAgent(
         }));
 
       const storedPrompt = await getOverseerPrompt();
-      const systemPrompt = storedPrompt?.content ?? DEFAULT_OVERSEER_ROLE_PROMPT;
+      const systemPrompt =
+        storedPrompt?.content ?? DEFAULT_OVERSEER_ROLE_PROMPT;
       const { overseerModel } = await getAIModelSettings();
 
       const completion = await runAgentCompletion({
@@ -356,7 +366,7 @@ export async function runOverseerAgent(
 export async function generateClientReport(
   options: {
     clientId: string;
-  } & ScopedAgentRunContext,
+  } & ScopedAgentRunContext
 ): Promise<AgentReply> {
   const { clientId, requestId, userId, role, conversationId } = options;
 
@@ -371,7 +381,7 @@ export async function generateClientReport(
     const { result, durationMs } = await withTimer(async () => {
       const client = await getClient(clientId);
       if (!client) {
-        throw new Error(`Cliënt ${clientId} niet gevonden.`);
+        throw new Error(`Coachee ${clientId} niet gevonden.`);
       }
 
       const history = (await getSessionWindow(userId, clientId, 80)) ?? [];
@@ -387,9 +397,12 @@ export async function generateClientReport(
       const previousReport = await getLatestClientReport(clientId);
       const { coachModel } = await getAIModelSettings();
       const storedReportPrompt = await getReportPrompt();
-      const baseReportPrompt = storedReportPrompt?.content ?? DEFAULT_REPORT_ROLE_PROMPT;
+      const baseReportPrompt =
+        storedReportPrompt?.content ?? DEFAULT_REPORT_ROLE_PROMPT;
 
-      const goals = client.goals.length ? client.goals.join(", ") : "Geen doelen vastgelegd";
+      const goals = client.goals.length
+        ? client.goals.join(", ")
+        : "Geen doelen vastgelegd";
       const docSummary = documentContext.contextText
         ? buildDocumentContextSection(documentContext.contextText)
         : "";
@@ -400,14 +413,14 @@ export async function generateClientReport(
       const systemPrompt = [
         baseReportPrompt,
         versioningGuidance,
-        `Cliënt: ${client.name}. Focus: ${client.focusArea}. Doelen: ${goals}.`,
+        `Coachee: ${client.name}. Focus: ${client.focusArea}. Doelen: ${goals}.`,
         docSummary,
       ]
         .filter(Boolean)
         .join("\n\n");
       const reportContextStats = summarizeDocumentContext(
         documentContext.contextText,
-        documentContext.sources,
+        documentContext.sources
       );
       logInfo("agent.report.context.attached", {
         requestId: requestId ?? null,
@@ -416,7 +429,9 @@ export async function generateClientReport(
         reportQueryLength: reportQueryText.length,
         historyCount: history.length,
         systemPromptChars: systemPrompt.length,
-        hasContextBoundary: systemPrompt.includes("<<<CLIENT_DOCUMENT_CONTEXT>>>"),
+        hasContextBoundary: systemPrompt.includes(
+          "<<<CLIENT_DOCUMENT_CONTEXT>>>"
+        ),
         ...reportContextStats,
       });
 
@@ -424,7 +439,8 @@ export async function generateClientReport(
         .map((message) => formatMessageForAgent(message))
         .join("\n\n");
       const previousReportDate =
-        previousReport?.createdAt && !Number.isNaN(Date.parse(previousReport.createdAt))
+        previousReport?.createdAt &&
+        !Number.isNaN(Date.parse(previousReport.createdAt))
           ? new Date(previousReport.createdAt).toLocaleDateString("nl-NL", {
               year: "numeric",
               month: "long",
@@ -442,7 +458,7 @@ export async function generateClientReport(
             "Werk dit rapport bij met de nieuwste context en benoem wat er is bijgekomen of veranderd.",
           ]
             .filter(Boolean)
-            .join("\n\n"),
+            .join("\n\n")
         );
       }
 
@@ -452,7 +468,7 @@ export async function generateClientReport(
 
       if (userContentSegments.length === 0) {
         userContentSegments.push(
-          "Er zijn nog geen gesprekken gevoerd. Maak een kort rapport met een vriendelijke introductie en herinnering om doelen te stellen.",
+          "Er zijn nog geen gesprekken gevoerd. Maak een kort rapport met een vriendelijke introductie en herinnering om doelen te stellen."
         );
       }
 
@@ -469,7 +485,10 @@ export async function generateClientReport(
         ],
       });
 
-      const savedReport = await saveClientReport(clientId, completion.outputText);
+      const savedReport = await saveClientReport(
+        clientId,
+        completion.outputText
+      );
 
       return {
         reply: savedReport.content,
@@ -518,9 +537,11 @@ export async function generateClientReport(
 function buildCoachSystemPrompt(
   basePrompt: string,
   client: ClientProfile,
-  documentContextText: string,
+  documentContextText: string
 ) {
-  const goals = client.goals.length ? client.goals.join("; ") : "Nog geen doelen vastgelegd";
+  const goals = client.goals.length
+    ? client.goals.join("; ")
+    : "Nog geen doelen vastgelegd";
   const docText = buildDocumentContextSection(documentContextText);
   const primaryPrompt = [
     "PROMPT_CENTER_COACH_PROMPT (LEIDEND)",
@@ -531,7 +552,7 @@ function buildCoachSystemPrompt(
 
   return [
     primaryPrompt,
-    `Cliënt: ${client.name}. Focus: ${client.focusArea}. Samenvatting: ${client.summary}. Doelen: ${goals}.`,
+    `Coachee: ${client.name}. Focus: ${client.focusArea}. Samenvatting: ${client.summary}. Doelen: ${goals}.`,
     "Aanvullende systeemcontext (niet leidend): gebruik documentcontext als extra bron naast chatgeschiedenis en algemene coachkennis. Als documentcontext ontbreekt of onvolledig is, geef alsnog een bruikbaar inhoudelijk antwoord en stel hooguit een korte vervolgvraag om ontbrekende details op te halen.",
     docText,
   ]
@@ -539,8 +560,13 @@ function buildCoachSystemPrompt(
     .join("\n\n");
 }
 
-function formatMessageForAgent(message: { source: string; role: AgentRole; content: string }) {
-  const sourceLabel = message.source === "HUMAN" ? "Menselijke coach" : "AI-coach";
+function formatMessageForAgent(message: {
+  source: string;
+  role: AgentRole;
+  content: string;
+}) {
+  const sourceLabel =
+    message.source === "HUMAN" ? "Menselijke coach" : "AI-coach";
   return `[${sourceLabel} · rol: ${message.role}]\n${message.content}`;
 }
 
@@ -561,7 +587,7 @@ function buildDocumentContextSection(contextText: string) {
 
 function buildReportDocumentQuery(
   client: ClientProfile,
-  history: Array<{ role: AgentRole; source: string; content: string }>,
+  history: Array<{ role: AgentRole; source: string; content: string }>
 ) {
   const recentHumanMessages = history
     .filter((message) => message.source === "HUMAN")

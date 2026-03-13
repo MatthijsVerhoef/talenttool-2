@@ -23,7 +23,7 @@ interface RouteParams {
 function jsonWithRequestId(
   requestId: string,
   body: unknown,
-  init?: ResponseInit,
+  init?: ResponseInit
 ) {
   const response = NextResponse.json(body, init);
   response.headers.set("x-request-id", requestId);
@@ -44,7 +44,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     return jsonWithRequestId(
       requestId,
       { error: "Niet geautoriseerd" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 
@@ -52,8 +52,8 @@ export async function POST(request: Request, { params }: RouteParams) {
   if (!clientId || !documentId) {
     return jsonWithRequestId(
       requestId,
-      { error: "Cliënt of document ontbreekt." },
-      { status: 400 },
+      { error: "Coachee of document ontbreekt." },
+      { status: 400 }
     );
   }
 
@@ -61,11 +61,15 @@ export async function POST(request: Request, { params }: RouteParams) {
     await assertCanAccessClient(
       { id: session.user.id, role: session.user.role },
       clientId,
-      { requestId, route, clientId },
+      { requestId, route, clientId }
     );
   } catch (error) {
     if (error instanceof ForbiddenError) {
-      return jsonWithRequestId(requestId, { error: error.message }, { status: 403 });
+      return jsonWithRequestId(
+        requestId,
+        { error: error.message },
+        { status: 403 }
+      );
     }
     throw error;
   }
@@ -75,7 +79,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     return jsonWithRequestId(
       requestId,
       { error: "Document niet gevonden." },
-      { status: 404 },
+      { status: 404 }
     );
   }
 
@@ -99,7 +103,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       return jsonWithRequestId(
         requestId,
         { error: "Kon bronbestand niet laden voor herverwerking." },
-        { status: 502 },
+        { status: 502 }
       );
     }
 
@@ -129,7 +133,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       return jsonWithRequestId(
         requestId,
         { error: "Document niet gevonden." },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -169,14 +173,15 @@ export async function POST(request: Request, { params }: RouteParams) {
       documentId,
       clientId,
       extractionStatus: DocumentExtractionStatus.FAILED,
-      extractionError: error instanceof Error ? error.message : "Herverwerking mislukt.",
+      extractionError:
+        error instanceof Error ? error.message : "Herverwerking mislukt.",
       extractedAt: new Date(),
     }).catch(() => null);
 
     return jsonWithRequestId(
       requestId,
       { error: "Herverwerking van document is mislukt." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -192,7 +197,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     return jsonWithRequestId(
       requestId,
       { error: "Niet geautoriseerd" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 
@@ -201,8 +206,8 @@ export async function DELETE(request: Request, { params }: RouteParams) {
   if (!clientId || !documentId) {
     return jsonWithRequestId(
       requestId,
-      { error: "Cliënt of document ontbreekt." },
-      { status: 400 },
+      { error: "Coachee of document ontbreekt." },
+      { status: 400 }
     );
   }
 
@@ -214,11 +219,15 @@ export async function DELETE(request: Request, { params }: RouteParams) {
         requestId,
         route: "/api/clients/[clientId]/documents/[documentId]",
         clientId,
-      },
+      }
     );
   } catch (error) {
     if (error instanceof ForbiddenError) {
-      return jsonWithRequestId(requestId, { error: error.message }, { status: 403 });
+      return jsonWithRequestId(
+        requestId,
+        { error: error.message },
+        { status: 403 }
+      );
     }
     throw error;
   }
@@ -228,7 +237,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     return jsonWithRequestId(
       requestId,
       { error: "Document niet gevonden." },
-      { status: 404 },
+      { status: 404 }
     );
   }
 
@@ -243,7 +252,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     return jsonWithRequestId(
       requestId,
       { error: "Document verwijderen is mislukt." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 

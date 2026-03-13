@@ -26,7 +26,7 @@ const DEBUG_DOC_CONTEXT = process.env.DEBUG_DOC_CONTEXT === "1";
 const COACH_DOCUMENT_CONTEXT_BUDGET_CHARS = Number(
   process.env.COACH_DOCUMENT_CONTEXT_BUDGET_CHARS ??
     process.env.DOCUMENT_CONTEXT_BUDGET_CHARS ??
-    "6000",
+    "6000"
 );
 
 interface Params {
@@ -38,7 +38,7 @@ interface Params {
 function jsonWithRequestId(
   requestId: string,
   body: unknown,
-  init?: ResponseInit,
+  init?: ResponseInit
 ) {
   const response = NextResponse.json(body, init);
   response.headers.set("x-request-id", requestId);
@@ -70,14 +70,15 @@ function formatMessageForAgent(message: {
   role: AgentRole;
   content: string;
 }) {
-  const sourceLabel = message.source === "HUMAN" ? "Menselijke coach" : "AI-coach";
+  const sourceLabel =
+    message.source === "HUMAN" ? "Menselijke coach" : "AI-coach";
   return `[${sourceLabel} · rol: ${message.role}]\n${message.content}`;
 }
 
 function buildCoachSystemPrompt(
   basePrompt: string,
   client: ClientProfile,
-  documentContextText: string,
+  documentContextText: string
 ) {
   const goals =
     client.goals.length > 0
@@ -93,7 +94,7 @@ function buildCoachSystemPrompt(
 
   return [
     primaryPrompt,
-    `Cliënt: ${client.name}. Focus: ${client.focusArea}. Samenvatting: ${client.summary}. Doelen: ${goals}.`,
+    `Coachee: ${client.name}. Focus: ${client.focusArea}. Samenvatting: ${client.summary}. Doelen: ${goals}.`,
     "Aanvullende systeemcontext (niet leidend): gebruik documentcontext als extra bron naast chatgeschiedenis en algemene coachkennis. Als documentcontext ontbreekt of onvolledig is, geef alsnog een bruikbaar inhoudelijk antwoord en stel hooguit een korte vervolgvraag om ontbrekende details op te halen.",
     docText,
   ]
@@ -143,7 +144,7 @@ export async function POST(request: Request, { params }: Params) {
     return jsonWithRequestId(
       requestId,
       { error: "Niet geautoriseerd" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 
@@ -152,7 +153,7 @@ export async function POST(request: Request, { params }: Params) {
     await assertCanAccessClient(
       { id: session.user.id, role: session.user.role },
       clientId,
-      { requestId, route, clientId },
+      { requestId, route, clientId }
     );
   } catch (error) {
     if (error instanceof ForbiddenError) {
@@ -169,19 +170,25 @@ export async function POST(request: Request, { params }: Params) {
       return jsonWithRequestId(
         requestId,
         { error: error.message },
-        { status: 403 },
+        { status: 403 }
       );
     }
     throw error;
   }
 
   const body = await request.json().catch(() => null);
-  const message = (body && typeof body === "object" ? (body as { message?: unknown }).message : "")
+  const message = (
+    body && typeof body === "object"
+      ? (body as { message?: unknown }).message
+      : ""
+  )
     ?.toString()
     .trim();
   const conversationId =
-    body && typeof body === "object" && typeof (body as { conversationId?: unknown }).conversationId === "string"
-      ? ((body as { conversationId?: string }).conversationId ?? undefined)
+    body &&
+    typeof body === "object" &&
+    typeof (body as { conversationId?: unknown }).conversationId === "string"
+      ? (body as { conversationId?: string }).conversationId ?? undefined
       : undefined;
 
   if (!message) {
@@ -200,7 +207,7 @@ export async function POST(request: Request, { params }: Params) {
     return jsonWithRequestId(
       requestId,
       { error: "Bericht is verplicht." },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -237,9 +244,12 @@ export async function POST(request: Request, { params }: Params) {
 
       void (async () => {
         try {
-          const sessionRecord = await getOrCreateCoachingSession(userId, clientId);
+          const sessionRecord = await getOrCreateCoachingSession(
+            userId,
+            clientId
+          );
           if (!sessionRecord) {
-            send("error", { error: "Cliënt niet gevonden.", requestId });
+            send("error", { error: "Coachee niet gevonden.", requestId });
             return;
           }
 
@@ -255,7 +265,7 @@ export async function POST(request: Request, { params }: Params) {
             "user",
             message,
             undefined,
-            "HUMAN",
+            "HUMAN"
           );
 
           const [history, storedPrompt, models, latestClient, documentContext] =
@@ -275,18 +285,19 @@ export async function POST(request: Request, { params }: Params) {
             ]);
 
           if (!latestClient) {
-            send("error", { error: "Cliënt niet gevonden.", requestId });
+            send("error", { error: "Coachee niet gevonden.", requestId });
             return;
           }
 
-          const coachPrompt = storedPrompt?.content ?? DEFAULT_COACH_ROLE_PROMPT;
+          const coachPrompt =
+            storedPrompt?.content ?? DEFAULT_COACH_ROLE_PROMPT;
           const completionMessages = [
             {
               role: "system" as const,
               content: buildCoachSystemPrompt(
                 coachPrompt,
                 latestClient,
-                documentContext.contextText,
+                documentContext.contextText
               ),
             },
             ...((history ?? []).map((entry) => ({
@@ -295,10 +306,10 @@ export async function POST(request: Request, { params }: Params) {
             })) as Array<{ role: ChatRole; content: string }>),
           ];
           const documentIds = Array.from(
-            new Set(documentContext.sources.map((source) => source.documentId)),
+            new Set(documentContext.sources.map((source) => source.documentId))
           );
           const filenames = Array.from(
-            new Set(documentContext.sources.map((source) => source.filename)),
+            new Set(documentContext.sources.map((source) => source.filename))
           );
           const streamSystemPrompt = completionMessages[0]?.content ?? "";
           logInfo("api.coach.stream.context.attached", {
@@ -313,7 +324,7 @@ export async function POST(request: Request, { params }: Params) {
             messagesCount: completionMessages.length,
             systemPromptChars: streamSystemPrompt.length,
             hasContextBoundary: streamSystemPrompt.includes(
-              "<<<CLIENT_DOCUMENT_CONTEXT>>>",
+              "<<<CLIENT_DOCUMENT_CONTEXT>>>"
             ),
             documentContextChunkCount: documentContext.sources.length,
             documentContextDocsConsidered: documentContext.docsConsidered,
@@ -353,7 +364,7 @@ export async function POST(request: Request, { params }: Params) {
                 responseId: completion.responseId,
                 usage: completion.usage,
               },
-              "AI",
+              "AI"
             );
             storedAssistantMessageId = storedAssistantMessage.id;
           }
@@ -409,11 +420,13 @@ export async function POST(request: Request, { params }: Params) {
               error: isTimeout
                 ? "Coach reageerde niet binnen de ingestelde tijd."
                 : isRateLimit
-                  ? "Coach is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
-                  : "Coach is tijdelijk niet bereikbaar.",
+                ? "Coach is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
+                : "Coach is tijdelijk niet bereikbaar.",
               status: isRateLimit ? 429 : isTimeout ? 504 : 500,
               retryAfterMs:
-                error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
+                error instanceof OpenAIRateLimitError
+                  ? error.retryAfterMs ?? null
+                  : null,
               requestId,
             });
           }
@@ -425,11 +438,20 @@ export async function POST(request: Request, { params }: Params) {
             userId,
             clientId,
             conversationId: conversationId ?? null,
-            status: isTimeout ? 504 : isRateLimit ? 429 : isAbortError ? 499 : 500,
+            status: isTimeout
+              ? 504
+              : isRateLimit
+              ? 429
+              : isAbortError
+              ? 499
+              : 500,
             durationMs,
-            errorMessage: error instanceof Error ? error.message : String(error),
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
             retryAfterMs:
-              error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
+              error instanceof OpenAIRateLimitError
+                ? error.retryAfterMs ?? null
+                : null,
           });
         } finally {
           request.signal.removeEventListener("abort", onRequestAbort);

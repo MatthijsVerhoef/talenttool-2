@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 
 import type { LucideIcon } from "lucide-react";
 import {
+  Building2,
   LogOut,
   MessageSquare,
   Paperclip,
@@ -29,6 +30,7 @@ import {
   Trash2,
   Loader2,
   FileText,
+  ImagePlus,
 } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 import { toast } from "sonner";
@@ -52,6 +54,7 @@ import type {
   ClientProfile,
 } from "@/lib/data/store";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { joinUserName, splitUserName } from "@/lib/user-name";
 
 interface CoachDashboardProps {
   clients: ClientProfile[];
@@ -59,6 +62,8 @@ interface CoachDashboardProps {
     name: string;
     email: string;
     image?: string | null;
+    companyName?: string | null;
+    companyLogoUrl?: string | null;
     role: UserRole;
   };
 }
@@ -193,6 +198,7 @@ const toolLinks: Array<{ label: string; icon: LucideIcon }> = [
 export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const router = useRouter();
   const isMobile = useIsMobile();
+  const initialUserName = splitUserName(currentUser.name);
   const [clientList, setClientList] = useState<ClientProfile[]>(clients);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(
     clients[0]?.id ?? null
@@ -265,10 +271,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     null
   );
   const [userForm, setUserForm] = useState({
-    name: currentUser.name,
+    firstName: initialUserName.firstName,
+    lastName: initialUserName.lastName,
     image: currentUser.image ?? "",
+    companyName: currentUser.companyName ?? "",
+    companyLogoUrl: currentUser.companyLogoUrl ?? "",
   });
   const [userAvatarFile, setUserAvatarFile] = useState<File | null>(null);
+  const [companyLogoFile, setCompanyLogoFile] = useState<File | null>(null);
   const [isUserSaving, setUserSaving] = useState(false);
   const [isClientSaving, setClientSaving] = useState(false);
   const [isCreatingClient, setCreatingClient] = useState(false);
@@ -346,6 +356,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const editClientAvatarInputId = useId();
   const newClientAvatarInputId = useId();
   const userAvatarInputId = useId();
+  const companyLogoInputId = useId();
   const activeCoachRequestsRef = useRef<Record<string, ActiveCoachRequest>>({});
   const queuedTranscriptByClientIdRef = useRef<Record<string, string>>({});
   const normalizedUserRole =
@@ -438,6 +449,15 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
   useEffect(() => {
     setDisplayUser(currentUser);
+    const nextUserName = splitUserName(currentUser.name);
+    setUserForm({
+      firstName: nextUserName.firstName,
+      lastName: nextUserName.lastName,
+      image: currentUser.image ?? "",
+      companyName: currentUser.companyName ?? "",
+      companyLogoUrl: currentUser.companyLogoUrl ?? "",
+    });
+    setCompanyLogoFile(null);
   }, [currentUser]);
 
   useEffect(() => {
@@ -665,11 +685,16 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [selectedClient, isClientDialogOpen]);
 
   useEffect(() => {
+    const nextUserName = splitUserName(displayUser.name);
     setUserForm({
-      name: displayUser.name,
+      firstName: nextUserName.firstName,
+      lastName: nextUserName.lastName,
       image: displayUser.image ?? "",
+      companyName: displayUser.companyName ?? "",
+      companyLogoUrl: displayUser.companyLogoUrl ?? "",
     });
     setUserAvatarFile(null);
+    setCompanyLogoFile(null);
   }, [displayUser]);
 
   async function fetchClientHistory(clientId: string) {
@@ -1174,7 +1199,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
       const finalizeStreamMessages = (
         persistedUserMessageId?: string,
-        persistedAssistantMessageId?: string,
+        persistedAssistantMessageId?: string
       ) => {
         setClientHistories((prev) => {
           const prevHistory = prev[clientId] ?? [];
@@ -1268,7 +1293,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               : undefined,
             typeof payload.assistantMessageId === "string"
               ? payload.assistantMessageId
-              : undefined,
+              : undefined
           );
           return;
         }
@@ -1984,7 +2009,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Bijwerken van cliënt is mislukt.");
+        throw new Error(data.error ?? "Bijwerken van Coachee is mislukt.");
       }
 
       let latestClient: ClientProfile | undefined = data.client;
@@ -2033,7 +2058,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     } catch (updateError) {
       console.error(updateError);
       setError(
-        (updateError as Error).message ?? "Bijwerken van cliënt is mislukt."
+        (updateError as Error).message ?? "Bijwerken van Coachee is mislukt."
       );
     } finally {
       setClientSaving(false);
@@ -2088,7 +2113,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Cliënt aanmaken is mislukt.");
+        throw new Error(data.error ?? "Coachee aanmaken is mislukt.");
       }
 
       router.refresh();
@@ -2110,7 +2135,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       setError(
         newClientError instanceof Error
           ? newClientError.message
-          : "Cliënt aanmaken is mislukt."
+          : "Coachee aanmaken is mislukt."
       );
     } finally {
       setCreatingClient(false);
@@ -2122,7 +2147,12 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     setUserSaving(true);
     setError(null);
     try {
+      if (!isAdmin && !userForm.companyName.trim()) {
+        throw new Error("Bedrijfsnaam is verplicht.");
+      }
+
       let imageUrl = userForm.image;
+      let companyLogoUrl = userForm.companyLogoUrl;
       if (userAvatarFile) {
         const avatarForm = new FormData();
         avatarForm.append("file", userAvatarFile);
@@ -2137,11 +2167,28 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         imageUrl = uploadData.url as string;
       }
 
+      if (companyLogoFile) {
+        const companyLogoForm = new FormData();
+        companyLogoForm.append("file", companyLogoFile);
+        const uploadResponse = await fetch(`/api/uploads/avatar`, {
+          method: "POST",
+          body: companyLogoForm,
+        });
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok || !uploadData.url) {
+          throw new Error(uploadData.error ?? "Bedrijfslogo uploaden is mislukt.");
+        }
+        companyLogoUrl = uploadData.url as string;
+      }
+
       const response = await fetch(`/api/users/me`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: userForm.name,
+          firstName: userForm.firstName,
+          lastName: userForm.lastName,
+          companyName: userForm.companyName,
+          companyLogoUrl,
           image: imageUrl,
         }),
       });
@@ -2150,12 +2197,29 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         throw new Error(data.error ?? "Profiel bijwerken is mislukt.");
       }
 
+      const updatedName =
+        typeof data.user?.name === "string" && data.user.name.trim().length > 0
+          ? data.user.name
+          : joinUserName(userForm.firstName, userForm.lastName);
+      const updatedNameParts = splitUserName(updatedName);
+
       setDisplayUser((prev) => ({
         ...prev,
-        name: userForm.name,
+        name: updatedName,
         image: imageUrl,
+        companyName: userForm.companyName.trim(),
+        companyLogoUrl,
+      }));
+      setUserForm((prev) => ({
+        ...prev,
+        firstName: updatedNameParts.firstName,
+        lastName: updatedNameParts.lastName,
+        image: imageUrl,
+        companyName: userForm.companyName.trim(),
+        companyLogoUrl,
       }));
       setUserAvatarFile(null);
+      setCompanyLogoFile(null);
       router.refresh();
     } catch (userError) {
       console.error(userError);
@@ -2268,7 +2332,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const strengthsAndWatchouts = useMemo(() => {
     if (!selectedClient) {
       return [
-        "Selecteer een cliënt om sterktes en aandachtspunten te bekijken.",
+        "Selecteer een Coachee om sterktes en aandachtspunten te bekijken.",
         "Gebruik het coachkanaal om actuele inzichten vast te leggen.",
       ];
     }
@@ -2381,7 +2445,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
               <div>
                 {" "}
                 <p className="text-sm font-semibold text-slate-900">
-                  {selectedClient?.name ?? "Geen cliënt"}
+                  {selectedClient?.name ?? "Geen Coachee"}
                 </p>
                 <p className="text-[11px] text-slate-500">
                   {selectedClient?.focusArea || "Geen focus"}
@@ -2390,7 +2454,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             </div>
             <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
               {selectedClient?.summary ||
-                "Selecteer een cliënt om details te bekijken."}
+                "Selecteer een Coachee om details te bekijken."}
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {focusTags.length > 0 ? (
@@ -2437,12 +2501,12 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                     className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     <Edit2 className="size-3.5" />
-                    Bewerk cliënt
+                    Bewerk Coachee
                   </button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl space-y-4">
                   <DialogHeader>
-                    <DialogTitle>Bewerk cliënt</DialogTitle>
+                    <DialogTitle>Bewerk Coachee</DialogTitle>
                     <DialogDescription>
                       Werk gegevens bij voor {selectedClient.name}.
                     </DialogDescription>
@@ -2838,31 +2902,60 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         >
           {/* Header */}
           <div className="">
-            <div className="flex items-center gap-3 px-3">
-              <div className="size-9 shrink-0 rounded-full bg-slate-900 text-white overflow-hidden ring-1 ring-slate-900/10">
-                {displayUser.image ? (
-                  <Image
-                    src={displayUser.image}
-                    alt={displayUser.name}
-                    width={36}
-                    height={36}
-                    className="size-9 object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center text-sm font-semibold">
-                    {userInitial}
-                  </span>
-                )}
-              </div>
+            <div className="space-y-3 px-3">
+              {!isAdmin && (displayUser.companyName || displayUser.companyLogoUrl) && (
+                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-3 py-2.5">
+                  <div className="size-10 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-700">
+                    {displayUser.companyLogoUrl ? (
+                      <Image
+                        src={displayUser.companyLogoUrl}
+                        alt={displayUser.companyName ?? "Bedrijfslogo"}
+                        width={40}
+                        height={40}
+                        className="size-10 object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-xs font-semibold">
+                        {getInitials(displayUser.companyName) || "B"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 leading-tight">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {displayUser.companyName}
+                    </p>
+                    <p className="text-xs text-slate-500">Jouw branding</p>
+                  </div>
+                </div>
+              )}
 
-              <div className="min-w-0 leading-tight">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {displayUser.name}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {isAdmin ? "Administrator" : "Coach"}
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="size-9 shrink-0 rounded-full bg-slate-900 text-white overflow-hidden ring-1 ring-slate-900/10">
+                  {displayUser.image ? (
+                    <Image
+                      src={displayUser.image}
+                      alt={displayUser.name}
+                      width={36}
+                      height={36}
+                      className="size-9 object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-sm font-semibold">
+                      {userInitial}
+                    </span>
+                  )}
+                </div>
+
+                <div className="min-w-0 leading-tight">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {displayUser.name}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {isAdmin ? "Administrator" : "Coach"}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -2873,7 +2966,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             <div>
               <div className="mb-2 flex items-center justify-between pl-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[#242424]">
-                  Cliënten
+                  coachees
                 </p>
                 <Dialog
                   open={isCreateClientDialogOpen}
@@ -2899,7 +2992,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   </DialogTrigger>
                   <DialogContent className="max-w-xl space-y-4">
                     <DialogHeader>
-                      <DialogTitle>Nieuwe cliënt</DialogTitle>
+                      <DialogTitle>Nieuwe Coachee</DialogTitle>
                       <DialogDescription>
                         Voeg een nieuwe coachee toe aan het systeem.
                       </DialogDescription>
@@ -3048,14 +3141,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           ) : (
                             <span className="text-xs text-slate-500">
                               {coachOptions.length === 0
-                                ? "Nodig coaches uit om cliënten toe te wijzen."
+                                ? "Nodig coaches uit om coachees toe te wijzen."
                                 : "Deze coach krijgt toegang tot dit dossier."}
                             </span>
                           )}
                         </label>
                       ) : (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          Deze cliënt wordt automatisch aan jouw coachaccount
+                          Deze Coachee wordt automatisch aan jouw coachaccount
                           gekoppeld.
                         </div>
                       )}
@@ -3305,21 +3398,124 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                           </p>
                                         </div>
                                       </div>
-                                      <label className="flex flex-col gap-1 text-sm">
-                                        Naam
-                                        <input
-                                          type="text"
-                                          value={userForm.name}
-                                          onChange={(event) =>
-                                            setUserForm((form) => ({
-                                              ...form,
-                                              name: event.target.value,
-                                            }))
-                                          }
-                                          className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                                          required
-                                        />
-                                      </label>
+                                      <div className="grid gap-3 sm:grid-cols-2">
+                                        <label className="flex flex-col gap-1 text-sm">
+                                          Voornaam
+                                          <input
+                                            type="text"
+                                            value={userForm.firstName}
+                                            onChange={(event) =>
+                                              setUserForm((form) => ({
+                                                ...form,
+                                                firstName: event.target.value,
+                                              }))
+                                            }
+                                            autoComplete="given-name"
+                                            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                                            required
+                                          />
+                                        </label>
+                                        <label className="flex flex-col gap-1 text-sm">
+                                          Achternaam
+                                          <input
+                                            type="text"
+                                            value={userForm.lastName}
+                                            onChange={(event) =>
+                                              setUserForm((form) => ({
+                                                ...form,
+                                                lastName: event.target.value,
+                                              }))
+                                            }
+                                            autoComplete="family-name"
+                                            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                                          />
+                                        </label>
+                                      </div>
+                                      {!isAdmin && (
+                                        <>
+                                          <label className="flex flex-col gap-1 text-sm">
+                                            Bedrijfsnaam
+                                            <div className="flex items-center rounded-lg border border-slate-300 px-3">
+                                              <Building2 className="mr-2 size-4 text-slate-400" />
+                                              <input
+                                                type="text"
+                                                value={userForm.companyName}
+                                                onChange={(event) =>
+                                                  setUserForm((form) => ({
+                                                    ...form,
+                                                    companyName: event.target.value,
+                                                  }))
+                                                }
+                                                autoComplete="organization"
+                                                className="w-full p-2 text-sm focus:outline-none"
+                                                required
+                                              />
+                                            </div>
+                                          </label>
+
+                                          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                                            <div className="flex items-center gap-3">
+                                              <div className="flex size-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-600">
+                                                {companyLogoFile ? (
+                                                  <img
+                                                    src={URL.createObjectURL(
+                                                      companyLogoFile
+                                                    )}
+                                                    alt="Nieuw bedrijfslogo"
+                                                    className="size-14 object-cover"
+                                                  />
+                                                ) : userForm.companyLogoUrl ? (
+                                                  <Image
+                                                    src={userForm.companyLogoUrl}
+                                                    alt={userForm.companyName || "Bedrijfslogo"}
+                                                    width={56}
+                                                    height={56}
+                                                    className="size-14 object-cover"
+                                                    unoptimized
+                                                  />
+                                                ) : (
+                                                  <span className="text-sm font-semibold">
+                                                    {getInitials(userForm.companyName) || "B"}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div>
+                                                <p className="text-xs font-semibold text-slate-700">
+                                                  Bedrijfslogo
+                                                </p>
+                                                <div className="mt-1 flex items-center gap-2">
+                                                  <input
+                                                    id={companyLogoInputId}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="sr-only"
+                                                    onChange={(event) =>
+                                                      setCompanyLogoFile(
+                                                        event.target.files?.[0] ??
+                                                          null
+                                                      )
+                                                    }
+                                                  />
+                                                  <label
+                                                    htmlFor={companyLogoInputId}
+                                                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                                                  >
+                                                    <ImagePlus className="size-3.5" />
+                                                    Kies bestand
+                                                  </label>
+                                                  <span className="text-xs text-slate-500">
+                                                    {companyLogoFile
+                                                      ? companyLogoFile.name
+                                                      : userForm.companyLogoUrl
+                                                      ? "Huidig logo ingesteld"
+                                                      : "Geen logo geselecteerd"}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </>
+                                      )}
                                       <p className="text-xs text-slate-500">
                                         Ingelogd als {displayUser.email}
                                       </p>
@@ -3945,7 +4141,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                               {selectedClient?.avatarUrl ? (
                                 <Image
                                   src={selectedClient.avatarUrl}
-                                  alt={selectedClient?.name ?? "Cliënt"}
+                                  alt={selectedClient?.name ?? "Coachee"}
                                   width={40}
                                   height={40}
                                   className="size-10 object-cover"
@@ -3961,7 +4157,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-slate-900 truncate">
-                                {selectedClient?.name ?? "Selecteer een cliënt"}
+                                {selectedClient?.name ??
+                                  "Selecteer een Coachee"}
                               </p>
                               <p className="text-xs text-slate-500 truncate">
                                 {selectedClient?.focusArea || "Geen focus"}
@@ -4371,7 +4568,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   Cliëntdetails
                 </p>
                 <p className="text-[11px] text-slate-500 truncate">
-                  {selectedClient?.name ?? "Selecteer een cliënt"}
+                  {selectedClient?.name ?? "Selecteer een Coachee"}
                 </p>
               </div>
               <button
@@ -4379,7 +4576,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 onClick={() => setMobileView("list")}
                 className="text-xs font-semibold text-slate-600"
               >
-                Cliënten
+                coachees
               </button>
             </div>
             <div className="flex-1 overflow-y-auto">

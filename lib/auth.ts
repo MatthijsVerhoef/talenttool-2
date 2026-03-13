@@ -191,6 +191,14 @@ export const auth = betterAuth({
         defaultValue: "COACH",
         input: false,
       },
+      companyName: {
+        type: "string",
+        required: false,
+      },
+      companyLogoUrl: {
+        type: "string",
+        required: false,
+      },
     },
   },
   emailAndPassword: {

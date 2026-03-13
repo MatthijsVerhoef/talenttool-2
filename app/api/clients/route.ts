@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       typeof coachId === "string" ? coachId.trim() : null;
     if (requestedCoachId && requestedCoachId !== session.user.id) {
       const response = jsonNoStore(
-        { error: "Coaches kunnen alleen cliënten aan zichzelf koppelen." },
+        { error: "Coaches kunnen alleen coachees aan zichzelf koppelen." },
         { status: 403 }
       );
       response.headers.set("x-request-id", requestId);

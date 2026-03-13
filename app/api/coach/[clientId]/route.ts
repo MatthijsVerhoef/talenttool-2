@@ -23,7 +23,7 @@ const DEBUG_DOC_CONTEXT = process.env.DEBUG_DOC_CONTEXT === "1";
 function jsonWithRequestId(
   requestId: string,
   body: unknown,
-  init?: ResponseInit,
+  init?: ResponseInit
 ) {
   const response = NextResponse.json(body, init);
   response.headers.set("x-request-id", requestId);
@@ -59,7 +59,7 @@ export async function GET(request: Request, { params }: Params) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -68,7 +68,7 @@ export async function GET(request: Request, { params }: Params) {
       await assertCanAccessClient(
         { id: session.user.id, role: session.user.role },
         clientId,
-        { requestId, route, clientId },
+        { requestId, route, clientId }
       );
     } catch (error) {
       if (error instanceof ForbiddenError) {
@@ -85,7 +85,7 @@ export async function GET(request: Request, { params }: Params) {
         return jsonWithRequestId(
           requestId,
           { error: error.message },
-          { status: 403 },
+          { status: 403 }
         );
       }
       throw error;
@@ -105,8 +105,8 @@ export async function GET(request: Request, { params }: Params) {
       });
       return jsonWithRequestId(
         requestId,
-        { error: "Cliënt niet gevonden." },
-        { status: 404 },
+        { error: "Coachee niet gevonden." },
+        { status: 404 }
       );
     }
 
@@ -134,7 +134,7 @@ export async function GET(request: Request, { params }: Params) {
     return jsonWithRequestId(
       requestId,
       { error: "Coach is tijdelijk niet bereikbaar." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -167,7 +167,7 @@ export async function POST(request: Request, { params }: Params) {
       return jsonWithRequestId(
         requestId,
         { error: "Niet geautoriseerd" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -176,7 +176,7 @@ export async function POST(request: Request, { params }: Params) {
       await assertCanAccessClient(
         { id: session.user.id, role: session.user.role },
         clientId,
-        { requestId, route, clientId },
+        { requestId, route, clientId }
       );
     } catch (error) {
       if (error instanceof ForbiddenError) {
@@ -193,7 +193,7 @@ export async function POST(request: Request, { params }: Params) {
         return jsonWithRequestId(
           requestId,
           { error: error.message },
-          { status: 403 },
+          { status: 403 }
         );
       }
       throw error;
@@ -202,7 +202,9 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json();
     const message = (body?.message ?? "").toString().trim();
     const conversationId =
-      typeof body?.conversationId === "string" ? body.conversationId : undefined;
+      typeof body?.conversationId === "string"
+        ? body.conversationId
+        : undefined;
 
     if (!message) {
       const durationMs = Date.now() - startedAt;
@@ -220,7 +222,7 @@ export async function POST(request: Request, { params }: Params) {
       return jsonWithRequestId(
         requestId,
         { error: "Bericht is verplicht." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -232,12 +234,15 @@ export async function POST(request: Request, { params }: Params) {
         userId: session.user.id,
         role: session.user.role,
         conversationId,
-      }),
+      })
     );
 
-    const updatedHistory = (await getSessionWindow(session.user.id, clientId)) ?? [];
+    const updatedHistory =
+      (await getSessionWindow(session.user.id, clientId)) ?? [];
     const documentIds = Array.from(
-      new Set((result.documentContextSources ?? []).map((source) => source.documentId)),
+      new Set(
+        (result.documentContextSources ?? []).map((source) => source.documentId)
+      )
     );
     const durationMs = Date.now() - startedAt;
     logInfo("api.coach.post.end", {
@@ -291,7 +296,9 @@ export async function POST(request: Request, { params }: Params) {
       durationMs,
       errorMessage: error instanceof Error ? error.message : String(error),
       retryAfterMs:
-        error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
+        error instanceof OpenAIRateLimitError
+          ? error.retryAfterMs ?? null
+          : null,
     });
     return jsonWithRequestId(
       requestId,
@@ -299,13 +306,15 @@ export async function POST(request: Request, { params }: Params) {
         error: isTimeout
           ? "Coach reageerde niet binnen de ingestelde tijd."
           : isRateLimit
-            ? "Coach is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
-            : "Coach is tijdelijk niet bereikbaar.",
+          ? "Coach is tijdelijk druk door rate limits. Probeer het over enkele seconden opnieuw."
+          : "Coach is tijdelijk niet bereikbaar.",
         retryAfterMs:
-          error instanceof OpenAIRateLimitError ? (error.retryAfterMs ?? null) : null,
+          error instanceof OpenAIRateLimitError
+            ? error.retryAfterMs ?? null
+            : null,
         requestId,
       },
-      { status },
+      { status }
     );
   }
 }

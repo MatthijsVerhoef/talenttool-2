@@ -8,7 +8,10 @@ import {
   type ClientDocument as PrismaClientDocument,
 } from "@prisma/client";
 
-import { DEFAULT_COACH_MODEL, DEFAULT_OVERSEER_MODEL } from "@/lib/agents/models";
+import {
+  DEFAULT_COACH_MODEL,
+  DEFAULT_OVERSEER_MODEL,
+} from "@/lib/agents/models";
 import {
   canAccessClient,
   ForbiddenError,
@@ -125,14 +128,20 @@ const OVERSEER_PROMPT_ID = "overseer-role";
 const REPORT_PROMPT_ID = "report-role";
 const COACH_MODEL_SETTING_ID = "coach-model";
 const OVERSEER_MODEL_SETTING_ID = "overseer-model";
-const DOCUMENT_SNIPPET_MAX_CHARS = Number(process.env.DOCUMENT_SNIPPET_MAX_CHARS ?? "0");
-const DOCUMENT_CHUNK_SIZE_CHARS = Number(process.env.DOCUMENT_CHUNK_SIZE_CHARS ?? "1000");
-const DOCUMENT_CHUNK_OVERLAP_CHARS = Number(
-  process.env.DOCUMENT_CHUNK_OVERLAP_CHARS ?? "120",
+const DOCUMENT_SNIPPET_MAX_CHARS = Number(
+  process.env.DOCUMENT_SNIPPET_MAX_CHARS ?? "0"
 );
-const DOCUMENT_CONTEXT_TOP_K = Number(process.env.DOCUMENT_CONTEXT_TOP_K ?? "10");
+const DOCUMENT_CHUNK_SIZE_CHARS = Number(
+  process.env.DOCUMENT_CHUNK_SIZE_CHARS ?? "1000"
+);
+const DOCUMENT_CHUNK_OVERLAP_CHARS = Number(
+  process.env.DOCUMENT_CHUNK_OVERLAP_CHARS ?? "120"
+);
+const DOCUMENT_CONTEXT_TOP_K = Number(
+  process.env.DOCUMENT_CONTEXT_TOP_K ?? "10"
+);
 const DEFAULT_DOCUMENT_CONTEXT_BUDGET_CHARS = Number(
-  process.env.DOCUMENT_CONTEXT_BUDGET_CHARS ?? "6000",
+  process.env.DOCUMENT_CONTEXT_BUDGET_CHARS ?? "6000"
 );
 let supportsExtendedClientDocumentSchema: boolean | null = null;
 
@@ -172,7 +181,7 @@ async function ensureSession(userId: string, clientId: string) {
 
 export async function getOrCreateCoachingSession(
   userId: string,
-  clientId: string,
+  clientId: string
 ): Promise<{ id: string; ownerUserId: string; clientId: string } | null> {
   const session = await ensureSession(userId, clientId);
   if (!session) {
@@ -209,7 +218,9 @@ export async function getClients(options?: {
   return clients.map(mapClientProfile);
 }
 
-export async function getClient(clientId: string): Promise<ClientProfile | null> {
+export async function getClient(
+  clientId: string
+): Promise<ClientProfile | null> {
   const client = await prisma.client.findUnique({
     where: { id: clientId },
     include: { goals: true },
@@ -248,7 +259,7 @@ export async function getClientForUser(
 
 export async function assertCoachOwnsClient(
   coachUserId: string,
-  clientId: string,
+  clientId: string
 ): Promise<boolean> {
   const count = await prisma.client.count({
     where: {
@@ -261,7 +272,7 @@ export async function assertCoachOwnsClient(
 
 export async function getOwnedCoachingSession(
   ownerUserId: string,
-  coachingSessionId: string,
+  coachingSessionId: string
 ): Promise<{ id: string; clientId: string } | null> {
   return prisma.coachingSession.findFirst({
     where: {
@@ -277,7 +288,7 @@ export async function getOwnedCoachingSession(
 
 export async function getOwnedAgentMessage(
   ownerUserId: string,
-  messageId: string,
+  messageId: string
 ): Promise<{ id: string; sessionId: string; clientId: string } | null> {
   const record = await prisma.agentMessage.findFirst({
     where: {
@@ -440,6 +451,8 @@ export async function updateUserProfile(
     name?: string;
     image?: string;
     avatarAlt?: string;
+    companyName?: string | null;
+    companyLogoUrl?: string | null;
   }
 ) {
   const user = await prisma.user.update({
@@ -458,7 +471,7 @@ export async function appendClientMessage(
   role: AgentRole,
   content: string,
   meta?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
-  source: MessageSource = "AI",
+  source: MessageSource = "AI"
 ): Promise<AgentMessage> {
   const session = await ensureSession(userId, clientId);
   if (!session) {
@@ -481,7 +494,7 @@ export async function appendClientMessage(
 export async function getSessionWindow(
   userId: string,
   clientId: string,
-  limit = 12,
+  limit = 12
 ): Promise<AgentMessage[] | null> {
   const session = await ensureSession(userId, clientId);
   if (!session) {
@@ -504,7 +517,7 @@ export async function appendOverseerMessage(
   ctx?: OverseerMessageContext & {
     source?: MessageSource;
     meta?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput;
-  },
+  }
 ): Promise<AgentMessage> {
   const source = ctx?.source ?? (role === "user" ? "HUMAN" : "AI");
   const message = await prisma.overseerMessage.create({
@@ -525,7 +538,7 @@ export async function appendOverseerMessage(
 
 export async function getOverseerWindow(
   coachUserId: string,
-  limit = 20,
+  limit = 20
 ): Promise<AgentMessage[]> {
   const messages = await prisma.overseerMessage.findMany({
     where: { coachUserId },
@@ -538,7 +551,7 @@ export async function getOverseerWindow(
 
 export async function getClientDigest(
   clientId: string,
-  ownerUserId?: string,
+  ownerUserId?: string
 ): Promise<string> {
   const client = await prisma.client.findUnique({
     where: { id: clientId },
@@ -563,9 +576,11 @@ export async function getClientDigest(
   });
 
   return [
-    `Cliënt: ${client.name}`,
+    `Coachee: ${client.name}`,
     `Focus: ${client.focusArea}`,
-    `Doelen: ${client.goals.map((goal) => goal.value).join("; ") || "Geen doelen bekend"}`,
+    `Doelen: ${
+      client.goals.map((goal) => goal.value).join("; ") || "Geen doelen bekend"
+    }`,
     `Laatste coachnotitie: ${latestAssistant?.content ?? "Nog geen notities."}`,
   ].join("\n");
 }
@@ -576,14 +591,14 @@ export async function listClientDigests(): Promise<string[]> {
   });
 
   const digests = await Promise.all(
-    clients.map((client) => getClientDigest(client.id)),
+    clients.map((client) => getClientDigest(client.id))
   );
 
   return digests.filter((digest) => Boolean(digest));
 }
 
 export async function listClientDigestsForCoach(
-  coachUserId: string,
+  coachUserId: string
 ): Promise<string[]> {
   const clients = await prisma.client.findMany({
     where: { coachId: coachUserId },
@@ -591,7 +606,7 @@ export async function listClientDigestsForCoach(
   });
 
   const digests = await Promise.all(
-    clients.map((client) => getClientDigest(client.id, coachUserId)),
+    clients.map((client) => getClientDigest(client.id, coachUserId))
   );
 
   return digests.filter((digest) => Boolean(digest));
@@ -673,7 +688,7 @@ function mapOverseerMessage(message: {
 
 export async function getClientDocuments(
   clientId: string,
-  limit = 20,
+  limit = 20
 ): Promise<ClientDocument[]> {
   if (supportsExtendedClientDocumentSchema === false) {
     const documents = await prisma.clientDocument.findMany({
@@ -733,7 +748,7 @@ function splitDocumentIntoChunks(content: string): string[] {
   const chunkSize = clampPositiveInt(DOCUMENT_CHUNK_SIZE_CHARS, 1000);
   const overlap = Math.min(
     clampPositiveInt(DOCUMENT_CHUNK_OVERLAP_CHARS, 120),
-    Math.max(0, chunkSize - 1),
+    Math.max(0, chunkSize - 1)
   );
   const chunks: string[] = [];
   let cursor = 0;
@@ -745,7 +760,7 @@ function splitDocumentIntoChunks(content: string): string[] {
       const breakRegion = normalized.slice(breakRegionStart, end);
       const lastBreak = Math.max(
         breakRegion.lastIndexOf("\n"),
-        breakRegion.lastIndexOf(". "),
+        breakRegion.lastIndexOf(". ")
       );
       if (lastBreak > 0) {
         end = breakRegionStart + lastBreak + 1;
@@ -794,8 +809,8 @@ function buildQueryTerms(input: string) {
         .toLowerCase()
         .split(/[^a-z0-9\u00c0-\u024f]+/i)
         .map((term) => term.trim())
-        .filter((term) => term.length >= 3 && !stopWords.has(term)),
-    ),
+        .filter((term) => term.length >= 3 && !stopWords.has(term))
+    )
   );
 }
 
@@ -891,11 +906,13 @@ function markExtendedClientDocumentSchemaMissing() {
 }
 
 function getDocumentChunkDelegate() {
-  const delegate = (prisma as unknown as {
-    documentChunk?: {
-      findMany?: (...args: unknown[]) => Promise<unknown>;
-    };
-  }).documentChunk;
+  const delegate = (
+    prisma as unknown as {
+      documentChunk?: {
+        findMany?: (...args: unknown[]) => Promise<unknown>;
+      };
+    }
+  ).documentChunk;
 
   if (!delegate || typeof delegate.findMany !== "function") {
     return null;
@@ -920,7 +937,9 @@ export async function createClientDocument(input: {
   const normalizedContent = input.content?.trim() || undefined;
   const extractionStatus =
     input.extractionStatus ??
-    (normalizedContent ? DocumentExtractionStatus.READY : DocumentExtractionStatus.PENDING);
+    (normalizedContent
+      ? DocumentExtractionStatus.READY
+      : DocumentExtractionStatus.PENDING);
   const extractedAt =
     input.extractedAt ??
     (extractionStatus === DocumentExtractionStatus.READY ? new Date() : null);
@@ -1035,7 +1054,8 @@ export async function updateClientDocumentExtraction(input: {
 
   const normalizedContent = input.content?.trim() || undefined;
   const chunks =
-    input.extractionStatus === DocumentExtractionStatus.READY && normalizedContent
+    input.extractionStatus === DocumentExtractionStatus.READY &&
+    normalizedContent
       ? splitDocumentIntoChunks(normalizedContent)
       : [];
 
@@ -1064,7 +1084,9 @@ export async function updateClientDocumentExtraction(input: {
           content: normalizedContent ?? null,
           kind: input.kind,
           audioDuration:
-            typeof input.audioDuration === "number" ? input.audioDuration : null,
+            typeof input.audioDuration === "number"
+              ? input.audioDuration
+              : null,
           extractionStatus: input.extractionStatus,
           extractionError: input.extractionError ?? null,
           extractedAt: input.extractedAt ?? new Date(),
@@ -1109,7 +1131,9 @@ export async function updateClientDocumentExtraction(input: {
           content: normalizedContent ?? null,
           kind: input.kind,
           audioDuration:
-            typeof input.audioDuration === "number" ? input.audioDuration : null,
+            typeof input.audioDuration === "number"
+              ? input.audioDuration
+              : null,
         },
         select: LEGACY_DOCUMENT_WITH_CLIENT_SELECT,
       });
@@ -1129,7 +1153,7 @@ export async function updateClientDocumentExtraction(input: {
 
 export async function getClientDocumentById(
   documentId: string,
-  clientId: string,
+  clientId: string
 ): Promise<ClientDocumentWithClient | null> {
   if (supportsExtendedClientDocumentSchema === false) {
     const document = await prisma.clientDocument.findFirst({
@@ -1186,7 +1210,7 @@ export async function getClientDocumentById(
 
 export async function deleteClientDocumentById(
   documentId: string,
-  clientId: string,
+  clientId: string
 ): Promise<ClientDocumentWithClient | null> {
   const scopedDocument = await prisma.clientDocument.findFirst({
     where: {
@@ -1244,15 +1268,17 @@ export async function getClientDocumentContext(options: {
 }): Promise<ClientDocumentContextResult> {
   const hasAccess = await canAccessClient(
     { id: options.userId, role: options.role },
-    options.clientId,
+    options.clientId
   );
   if (!hasAccess) {
-    throw new ForbiddenError("Geen toegang tot documentcontext voor deze cliënt.");
+    throw new ForbiddenError(
+      "Geen toegang tot documentcontext voor deze Coachee."
+    );
   }
 
   const budgetChars = clampPositiveInt(
     options.budgetChars,
-    DEFAULT_DOCUMENT_CONTEXT_BUDGET_CHARS,
+    DEFAULT_DOCUMENT_CONTEXT_BUDGET_CHARS
   );
   if (budgetChars <= 0) {
     return {
@@ -1331,7 +1357,10 @@ export async function getClientDocumentContext(options: {
       },
     }));
   } catch (error) {
-    if (error instanceof Error && error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING") {
+    if (
+      error instanceof Error &&
+      error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING"
+    ) {
       logInfo("doc_context.fallback", {
         requestId: options.requestId ?? null,
         userId: options.userId,
@@ -1339,7 +1368,10 @@ export async function getClientDocumentContext(options: {
         reason: "document_chunk_delegate_missing",
       });
     }
-    if (error instanceof Error && error.message === "DOCUMENT_CONTEXT_SCHEMA_MISSING") {
+    if (
+      error instanceof Error &&
+      error.message === "DOCUMENT_CONTEXT_SCHEMA_MISSING"
+    ) {
       logInfo("doc_context.fallback", {
         requestId: options.requestId ?? null,
         userId: options.userId,
@@ -1361,8 +1393,14 @@ export async function getClientDocumentContext(options: {
     }
 
     if (
-      !(error instanceof Error && error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING") &&
-      !(error instanceof Error && error.message === "DOCUMENT_CONTEXT_SCHEMA_MISSING")
+      !(
+        error instanceof Error &&
+        error.message === "DOCUMENT_CHUNK_DELEGATE_MISSING"
+      ) &&
+      !(
+        error instanceof Error &&
+        error.message === "DOCUMENT_CONTEXT_SCHEMA_MISSING"
+      )
     ) {
       markExtendedClientDocumentSchemaMissing();
       logInfo("doc_context.fallback", {
@@ -1442,10 +1480,11 @@ export async function getClientDocumentContext(options: {
           ? 0
           : queryTerms.reduce(
               (total, term) => total + countOccurrences(lower, term),
-              0,
+              0
             );
       const recencyScore = chunk.document.createdAt.getTime() / 1e11;
-      const score = overlapScore * 1000 + recencyScore - chunk.chunkIndex / 10000;
+      const score =
+        overlapScore * 1000 + recencyScore - chunk.chunkIndex / 10000;
       return {
         score,
         chunk,
@@ -1455,8 +1494,14 @@ export async function getClientDocumentContext(options: {
       if (b.score !== a.score) {
         return b.score - a.score;
       }
-      if (b.chunk.document.createdAt.getTime() !== a.chunk.document.createdAt.getTime()) {
-        return b.chunk.document.createdAt.getTime() - a.chunk.document.createdAt.getTime();
+      if (
+        b.chunk.document.createdAt.getTime() !==
+        a.chunk.document.createdAt.getTime()
+      ) {
+        return (
+          b.chunk.document.createdAt.getTime() -
+          a.chunk.document.createdAt.getTime()
+        );
       }
       if (a.chunk.chunkIndex !== b.chunk.chunkIndex) {
         return a.chunk.chunkIndex - b.chunk.chunkIndex;
@@ -1473,9 +1518,12 @@ export async function getClientDocumentContext(options: {
       break;
     }
 
-    const chunkLabel = `[Document: ${entry.chunk.document.originalName} | chunk ${entry.chunk.chunkIndex + 1}]`;
+    const chunkLabel = `[Document: ${
+      entry.chunk.document.originalName
+    } | chunk ${entry.chunk.chunkIndex + 1}]`;
     const formatted = `${chunkLabel}\n${entry.chunk.text}`.trim();
-    const nextTotal = totalChars + formatted.length + (selectedChunks.length > 0 ? 6 : 0);
+    const nextTotal =
+      totalChars + formatted.length + (selectedChunks.length > 0 ? 6 : 0);
     if (nextTotal > budgetChars) {
       continue;
     }
@@ -1490,9 +1538,15 @@ export async function getClientDocumentContext(options: {
   }
 
   const contextText = selectedChunks.join("\n\n---\n\n").trim();
-  const docsConsidered = Array.from(new Set(chunks.map((chunk) => chunk.document.id))).length;
-  const documentIds = Array.from(new Set(selectedSources.map((source) => source.documentId)));
-  const filenames = Array.from(new Set(selectedSources.map((source) => source.filename)));
+  const docsConsidered = Array.from(
+    new Set(chunks.map((chunk) => chunk.document.id))
+  ).length;
+  const documentIds = Array.from(
+    new Set(selectedSources.map((source) => source.documentId))
+  );
+  const filenames = Array.from(
+    new Set(selectedSources.map((source) => source.filename))
+  );
   logInfo("doc_context.selected", {
     requestId: options.requestId ?? null,
     userId: options.userId,
@@ -1520,7 +1574,7 @@ export async function getClientDocumentContext(options: {
 }
 
 export async function getClientDocumentDebugRecords(
-  clientId: string,
+  clientId: string
 ): Promise<ClientDocumentDebugRecord[]> {
   const documents = await getClientDocuments(clientId, 200);
   const chunkCounts = new Map<string, number>();
@@ -1563,7 +1617,9 @@ export async function getClientDocumentDebugRecords(
       size: document.size,
       hasExtractedText: extractedLength > 0,
       extractedLength,
-      chunkCount: chunkCountsAvailable ? (chunkCounts.get(document.id) ?? 0) : null,
+      chunkCount: chunkCountsAvailable
+        ? chunkCounts.get(document.id) ?? 0
+        : null,
       extractionStatus: document.extractionStatus,
       extractionError: document.extractionError ?? null,
       updatedAt: document.extractedAt ?? document.createdAt,
@@ -1573,7 +1629,7 @@ export async function getClientDocumentDebugRecords(
 
 export async function getDocumentSnippets(
   clientId: string,
-  limit = 3,
+  limit = 3
 ): Promise<string[]> {
   const documents = await prisma.clientDocument.findMany({
     where: { clientId, content: { not: null } },
@@ -1587,7 +1643,9 @@ export async function getDocumentSnippets(
       DOCUMENT_SNIPPET_MAX_CHARS > 0
         ? body.slice(0, DOCUMENT_SNIPPET_MAX_CHARS)
         : body;
-    return `Document (${doc.kind}): ${doc.originalName}\nGeüpload op: ${doc.createdAt.toISOString()}${
+    return `Document (${doc.kind}): ${
+      doc.originalName
+    }\nGeüpload op: ${doc.createdAt.toISOString()}${
       doc.kind === "AUDIO" && doc.audioDuration
         ? `\nLengte audio: ${doc.audioDuration?.toFixed(1)}s`
         : ""
@@ -1644,7 +1702,7 @@ export async function updatePrompt(
   newContent: string,
   actorUserId: string,
   requestId?: string,
-  ip?: string,
+  ip?: string
 ): Promise<PromptMutationResult> {
   const promptId = PROMPT_ID_BY_KEY[promptKey];
 
@@ -1694,7 +1752,7 @@ export async function updateCoachPrompt(
   content: string,
   actorUserId: string,
   requestId?: string,
-  ip?: string,
+  ip?: string
 ): Promise<PromptMutationResult> {
   return updatePrompt("coach", content, actorUserId, requestId, ip);
 }
@@ -1707,7 +1765,7 @@ export async function updateOverseerPrompt(
   content: string,
   actorUserId: string,
   requestId?: string,
-  ip?: string,
+  ip?: string
 ): Promise<PromptMutationResult> {
   return updatePrompt("overseer", content, actorUserId, requestId, ip);
 }
@@ -1720,13 +1778,13 @@ export async function updateReportPrompt(
   content: string,
   actorUserId: string,
   requestId?: string,
-  ip?: string,
+  ip?: string
 ): Promise<PromptMutationResult> {
   return updatePrompt("report", content, actorUserId, requestId, ip);
 }
 
 export async function getAgentMessageById(
-  messageId: string,
+  messageId: string
 ): Promise<StoredAgentMessage | null> {
   const record = await prisma.agentMessage.findUnique({
     where: { id: messageId },
@@ -1751,7 +1809,7 @@ export async function getAgentMessageById(
 
 export async function getOverseerMessageById(
   messageId: string,
-  coachUserId?: string,
+  coachUserId?: string
 ): Promise<StoredAgentMessage | null> {
   const record = await prisma.overseerMessage.findFirst({
     where: {
@@ -1767,7 +1825,9 @@ export async function getOverseerMessageById(
   return mapOverseerMessage(record);
 }
 
-function mapSettings(records: Array<{ id: string; value: string }>): Record<string, string> {
+function mapSettings(
+  records: Array<{ id: string; value: string }>
+): Record<string, string> {
   return records.reduce<Record<string, string>>((acc, record) => {
     acc[record.id] = record.value;
     return acc;
@@ -1793,12 +1853,13 @@ export async function getAIModelSettings(): Promise<{
           in: [COACH_MODEL_SETTING_ID, OVERSEER_MODEL_SETTING_ID],
         },
       },
-    }),
+    })
   );
 
   return {
     coachModel: settings[COACH_MODEL_SETTING_ID] ?? DEFAULT_COACH_MODEL,
-    overseerModel: settings[OVERSEER_MODEL_SETTING_ID] ?? DEFAULT_OVERSEER_MODEL,
+    overseerModel:
+      settings[OVERSEER_MODEL_SETTING_ID] ?? DEFAULT_OVERSEER_MODEL,
   };
 }
 
@@ -1809,12 +1870,17 @@ export async function updateAIModelSettings(input: {
   const tasks: Array<Promise<void>> = [];
 
   if (typeof input.coachModel === "string" && input.coachModel.trim().length) {
-    tasks.push(upsertSystemSetting(COACH_MODEL_SETTING_ID, input.coachModel.trim()));
+    tasks.push(
+      upsertSystemSetting(COACH_MODEL_SETTING_ID, input.coachModel.trim())
+    );
   }
 
-  if (typeof input.overseerModel === "string" && input.overseerModel.trim().length) {
+  if (
+    typeof input.overseerModel === "string" &&
+    input.overseerModel.trim().length
+  ) {
     tasks.push(
-      upsertSystemSetting(OVERSEER_MODEL_SETTING_ID, input.overseerModel.trim()),
+      upsertSystemSetting(OVERSEER_MODEL_SETTING_ID, input.overseerModel.trim())
     );
   }
 
@@ -1844,7 +1910,9 @@ type PrismaAiResponseLayer = Prisma.AiResponseLayerGetPayload<{
   };
 }>;
 
-function mapAiResponseLayer(record: PrismaAiResponseLayer): AIResponseLayerRecord {
+function mapAiResponseLayer(
+  record: PrismaAiResponseLayer
+): AIResponseLayerRecord {
   return {
     id: record.id,
     name: record.name,
@@ -1889,16 +1957,13 @@ async function getNextLayerPosition() {
 
 export async function listResponseLayers(): Promise<AIResponseLayerRecord[]> {
   const records = await prisma.aiResponseLayer.findMany({
-    orderBy: [
-      { position: "asc" },
-      { createdAt: "asc" },
-    ],
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
   return records.map(mapAiResponseLayer);
 }
 
 export async function listActiveResponseLayers(
-  agentType: AgentKind,
+  agentType: AgentKind
 ): Promise<AIResponseLayerRecord[]> {
   const targets: PrismaResponseLayerTarget[] = [
     PrismaResponseLayerTarget.ALL,
@@ -1912,10 +1977,7 @@ export async function listActiveResponseLayers(
       isEnabled: true,
       target: { in: targets },
     },
-    orderBy: [
-      { position: "asc" },
-      { createdAt: "asc" },
-    ],
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
 
   return records.map(mapAiResponseLayer);
@@ -1989,7 +2051,7 @@ export async function updateResponseLayer(
     temperature?: number;
     position?: number;
     isEnabled?: boolean;
-  },
+  }
 ): Promise<AIResponseLayerRecord> {
   const data: Prisma.AiResponseLayerUpdateInput = {};
 
@@ -2029,7 +2091,10 @@ export async function updateResponseLayer(
     data.mode = input.mode;
   }
 
-  if (typeof input.temperature === "number" && Number.isFinite(input.temperature)) {
+  if (
+    typeof input.temperature === "number" &&
+    Number.isFinite(input.temperature)
+  ) {
     data.temperature = normalizeLayerTemperature(input.temperature);
   }
 
@@ -2131,7 +2196,7 @@ export async function createAgentFeedback(input: {
 
 export async function listAgentFeedback(
   agentType?: AgentKind,
-  limit = 20,
+  limit = 20
 ): Promise<AgentFeedbackRecord[]> {
   const records = await prisma.agentFeedback.findMany({
     where: agentType ? { agentType } : undefined,
@@ -2179,7 +2244,9 @@ function mapDocument(document: {
     content: document.content,
     extractionStatus: document.extractionStatus,
     extractionError: document.extractionError,
-    extractedAt: document.extractedAt ? document.extractedAt.toISOString() : null,
+    extractedAt: document.extractedAt
+      ? document.extractedAt.toISOString()
+      : null,
   };
 }
 
@@ -2252,7 +2319,7 @@ function mapLegacyDocumentWithClient(document: {
 }
 
 function mapDocumentWithClient(
-  document: PrismaClientDocument,
+  document: PrismaClientDocument
 ): ClientDocumentWithClient {
   return {
     ...mapDocument(document),

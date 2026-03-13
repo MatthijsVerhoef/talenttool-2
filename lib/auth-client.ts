@@ -1,5 +1,7 @@
 import { createAuthClient } from "better-auth/react";
 
+import { normalizeUserName } from "@/lib/user-name";
+
 const AUTH_DEBUG_ENABLED =
   process.env.NEXT_PUBLIC_AUTH_DEBUG === "1" || process.env.AUTH_DEBUG === "1";
 
@@ -135,11 +137,29 @@ export async function signInWithEmail(input: { email: string; password: string }
 export async function signUpWithEmail(input: {
   email: string;
   password: string;
-  name: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
+  companyLogoUrl?: string;
 }) {
   const requestId = createRequestId();
+  const normalizedName = normalizeUserName(input);
+
+  if (!normalizedName) {
+    throw new Error("Naam is verplicht.");
+  }
+
   const result = await authClient.signUp.email({
-    ...input,
+    email: input.email,
+    password: input.password,
+    name: normalizedName,
+    ...(typeof input.companyName === "string"
+      ? { companyName: input.companyName.trim() }
+      : {}),
+    ...(typeof input.companyLogoUrl === "string"
+      ? { companyLogoUrl: input.companyLogoUrl.trim() }
+      : {}),
     fetchOptions: {
       headers: {
         "x-request-id": requestId,

@@ -228,6 +228,8 @@ model AiResponseLayer {
 model User {
   id            String     @id @default(cuid())
   name          String
+  companyName   String?
+  companyLogoUrl String?
   email         String     @unique
   emailVerified Boolean    @default(false)
   image         String?

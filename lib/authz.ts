@@ -42,7 +42,7 @@ export function scopedClientWhere(user: AuthzUser): Prisma.ClientWhereInput {
 }
 
 export function scopedCoachingSessionWhere(
-  user: AuthzUser,
+  user: AuthzUser
 ): Prisma.CoachingSessionWhereInput {
   if (isAdmin(user)) {
     return {};
@@ -54,7 +54,7 @@ export function scopedCoachingSessionWhere(
 }
 
 export function scopedAgentMessageWhere(
-  user: AuthzUser,
+  user: AuthzUser
 ): Prisma.AgentMessageWhereInput {
   if (isAdmin(user)) {
     return {};
@@ -69,7 +69,7 @@ export function scopedAgentMessageWhere(
 
 export async function canAccessClient(
   user: AuthzUser,
-  clientId: string,
+  clientId: string
 ): Promise<boolean> {
   if (!clientId) {
     return false;
@@ -95,7 +95,7 @@ export async function canAccessClient(
 export async function assertCanAccessClient(
   user: AuthzUser,
   clientId: string,
-  context?: AuthzContext,
+  context?: AuthzContext
 ): Promise<void> {
   const allowed = await canAccessClient(user, clientId);
   if (allowed) {
@@ -110,5 +110,5 @@ export async function assertCanAccessClient(
     route: context?.route ?? null,
   });
 
-  throw new ForbiddenError("Geen toegang tot deze cliënt.");
+  throw new ForbiddenError("Geen toegang tot deze Coachee.");
 }
