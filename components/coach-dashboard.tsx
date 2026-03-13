@@ -2927,8 +2927,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           {/* Header */}
           <div className="">
             <div className="space-y-3 px-3">
-              {!isAdmin &&
-                (displayUser.companyName || displayUser.companyLogoUrl) && (
+              {(displayUser.companyName || displayUser.companyLogoUrl) && (
                   <div className="flex items-center">
                     <div className="size-7 shrink-0 overflow-hidden bg-transparent flex items-center justify-center">
                       {displayUser.companyLogoUrl ? (
@@ -3471,8 +3470,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                           />
                                         </label>
                                       </div>
-                                      {!isAdmin && (
-                                        <>
+                                      <>
                                           <label className="flex flex-col gap-1 text-sm">
                                             Bedrijfsnaam
                                             <div className="flex items-center rounded-lg border border-slate-300 px-3">
@@ -3489,7 +3487,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                                 }
                                                 autoComplete="organization"
                                                 className="w-full p-2 text-sm focus:outline-none"
-                                                required
+                                                required={!isAdmin}
                                               />
                                             </div>
                                           </label>
@@ -3562,8 +3560,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                               </div>
                                             </div>
                                           </div>
-                                        </>
-                                      )}
+                                      </>
                                       <p className="text-xs text-slate-500">
                                         Ingelogd als {displayUser.email}
                                       </p>
