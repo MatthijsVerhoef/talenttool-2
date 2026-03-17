@@ -366,6 +366,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       ? displayUser.role.trim().toUpperCase()
       : "";
   const isAdmin = normalizedUserRole === "ADMIN";
+  const canEditClients =
+    isAdmin || normalizedUserRole === "COACH";
   const canUseSupervisorChannel =
     normalizedUserRole === "ADMIN" || normalizedUserRole === "COACH";
   const userInitial = displayUser.name?.charAt(0).toUpperCase() ?? "C";
@@ -2007,7 +2009,11 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             .split(",")
             .map((goal) => goal.trim())
             .filter(Boolean),
-          coachId: clientForm.coachId ? clientForm.coachId : null,
+          ...(isAdmin
+            ? {
+                coachId: clientForm.coachId ? clientForm.coachId : null,
+              }
+            : {}),
         }),
       });
 
@@ -2480,7 +2486,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 </span>
               )}
             </div>
-            {isAdmin && selectedClient && (
+            {canEditClients && selectedClient && (
               <Dialog
                 open={isClientDialogOpen}
                 onOpenChange={(open) => {
@@ -2654,38 +2660,40 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                         className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
                       />
                     </label>
-                    <label className="flex flex-col gap-1 text-sm">
-                      Toegewezen coach
-                      <select
-                        value={clientForm.coachId}
-                        onChange={(event) =>
-                          setClientForm((form) => ({
-                            ...form,
-                            coachId: event.target.value,
-                          }))
-                        }
-                        className="rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
-                        disabled={isCoachOptionsLoading}
-                      >
-                        <option value="">Nog niet toegewezen</option>
-                        {coachOptions.map((coach) => (
-                          <option key={coach.id} value={coach.id}>
-                            {coach.name?.trim()
-                              ? `${coach.name} (${coach.email})`
-                              : coach.email}
-                          </option>
-                        ))}
-                      </select>
-                      {coachOptionsError ? (
-                        <span className="text-xs text-rose-600">
-                          {coachOptionsError}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-500">
-                          Bepaal welke coach toegang heeft tot dit dossier.
-                        </span>
-                      )}
-                    </label>
+                    {isAdmin ? (
+                      <label className="flex flex-col gap-1 text-sm">
+                        Toegewezen coach
+                        <select
+                          value={clientForm.coachId}
+                          onChange={(event) =>
+                            setClientForm((form) => ({
+                              ...form,
+                              coachId: event.target.value,
+                            }))
+                          }
+                          className="rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
+                          disabled={isCoachOptionsLoading}
+                        >
+                          <option value="">Nog niet toegewezen</option>
+                          {coachOptions.map((coach) => (
+                            <option key={coach.id} value={coach.id}>
+                              {coach.name?.trim()
+                                ? `${coach.name} (${coach.email})`
+                                : coach.email}
+                            </option>
+                          ))}
+                        </select>
+                        {coachOptionsError ? (
+                          <span className="text-xs text-rose-600">
+                            {coachOptionsError}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-500">
+                            Bepaal welke coach toegang heeft tot dit dossier.
+                          </span>
+                        )}
+                      </label>
+                    ) : null}
                     <div className="flex justify-end gap-2 text-sm">
                       <button
                         type="button"

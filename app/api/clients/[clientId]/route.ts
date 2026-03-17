@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError, isAdmin } from "@/lib/authz";
-import { updateClientAvatar, updateClientProfile } from "@/lib/data/store";
+import {
+  getClient,
+  updateClientAvatar,
+  updateClientProfile,
+} from "@/lib/data/store";
 import { isCoachUser } from "@/lib/data/users";
 import { getRequestId } from "@/lib/observability";
 
@@ -95,14 +99,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     "coachId"
   );
 
-  if (!admin && hasCoachUpdate) {
-    const response = jsonNoStore(
-      { error: "Alleen admins mogen de coachtoewijzing wijzigen." },
-      { status: 403 },
-    );
-    response.headers.set("x-request-id", requestId);
-    return response;
-  }
+  let shouldApplyCoachUpdate = hasCoachUpdate;
 
   let nextCoachId: string | null | undefined = undefined;
   if (hasCoachUpdate) {
@@ -129,12 +126,43 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
   }
 
+  if (!admin && hasCoachUpdate) {
+    const client = await getClient(clientId);
+    if (!client) {
+      const response = jsonNoStore(
+        { error: "Coachee niet gevonden" },
+        { status: 404 }
+      );
+      response.headers.set("x-request-id", requestId);
+      return response;
+    }
+
+    if (nextCoachId !== (client.coachId ?? null)) {
+      const response = jsonNoStore(
+        { error: "Alleen admins mogen de coachtoewijzing wijzigen." },
+        { status: 403 }
+      );
+      response.headers.set("x-request-id", requestId);
+      return response;
+    }
+
+    shouldApplyCoachUpdate = false;
+  }
+
   const hasManagerNameUpdate = Object.prototype.hasOwnProperty.call(
     payload,
     "managerName"
   );
 
-  if (!name && !managerName && !focusArea && !summary && !goals && !hasCoachUpdate && !hasManagerNameUpdate) {
+  if (
+    !name &&
+    !managerName &&
+    !focusArea &&
+    !summary &&
+    !goals &&
+    !shouldApplyCoachUpdate &&
+    !hasManagerNameUpdate
+  ) {
     const response = jsonNoStore(
       { error: "Geen wijzigingen doorgegeven" },
       { status: 400 }
@@ -158,7 +186,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     goals,
   };
 
-  if (hasCoachUpdate) {
+  if (shouldApplyCoachUpdate) {
     updatePayload.coachId = nextCoachId ?? null;
   }
 
