@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError, isAdmin } from "@/lib/authz";
+import { deleteFromBlobSafely } from "@/lib/blob";
 import {
+  deleteClientById,
   getClient,
   updateClientAvatar,
   updateClientProfile,
@@ -195,4 +197,79 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const response = jsonNoStore({ client: updatedClient });
   response.headers.set("x-request-id", requestId);
   return response;
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const requestId = getRequestId(request);
+  const session = await getServerSessionFromRequest(request, {
+    requestId,
+    source: "/api/clients/[clientId] DELETE",
+  });
+
+  if (!session) {
+    const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 401 });
+    response.headers.set("x-request-id", requestId);
+    return response;
+  }
+
+  const params = await context.params;
+  const clientId = params?.clientId ?? null;
+
+  if (!clientId) {
+    const response = jsonNoStore(
+      { error: "Client ID ontbreekt" },
+      { status: 400 }
+    );
+    response.headers.set("x-request-id", requestId);
+    return response;
+  }
+
+  try {
+    await assertCanAccessClient(
+      { id: session.user.id, role: session.user.role },
+      clientId,
+      {
+        requestId,
+        route: "/api/clients/[clientId]",
+        clientId,
+      }
+    );
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      const response = jsonNoStore({ error: error.message }, { status: 403 });
+      response.headers.set("x-request-id", requestId);
+      return response;
+    }
+    throw error;
+  }
+
+  try {
+    const deletedClient = await deleteClientById(clientId);
+
+    if (!deletedClient) {
+      const response = jsonNoStore(
+        { error: "Coachee niet gevonden" },
+        { status: 404 }
+      );
+      response.headers.set("x-request-id", requestId);
+      return response;
+    }
+
+    await deleteFromBlobSafely([
+      deletedClient.avatarUrl ?? "",
+      ...deletedClient.documentUrls,
+    ]);
+
+    const response = jsonNoStore({ success: true });
+    response.headers.set("x-request-id", requestId);
+    return response;
+  } catch (error) {
+    console.error("Client delete failed", error);
+    const response = jsonNoStore(
+      { error: "Coachee verwijderen is mislukt." },
+      { status: 500 }
+    );
+    response.headers.set("x-request-id", requestId);
+    return response;
+  }
 }

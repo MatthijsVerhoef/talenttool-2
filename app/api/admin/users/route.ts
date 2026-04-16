@@ -17,5 +17,9 @@ export async function GET(request: Request) {
     listPendingInvites(),
   ]);
 
-  return NextResponse.json({ users, invites });
+  return NextResponse.json({
+    users,
+    invites,
+    currentUserId: session.user.id,
+  });
 }

@@ -137,6 +137,16 @@ function formatFileSize(bytes?: number | null) {
   return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
+function removeRecordKey<T>(record: Record<string, T>, key: string) {
+  if (!Object.prototype.hasOwnProperty.call(record, key)) {
+    return record;
+  }
+
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
 function cleanMessageContent(content: string) {
   return content
     .replace(/\[AI-[^\]]*\]\s*/gi, "")
@@ -159,7 +169,7 @@ function renderUserAvatarElement(name?: string | null, image?: string | null) {
     );
   }
   return (
-    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white">
+    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2ea3f2] text-white">
       <span className="text-xs font-semibold">{getInitials(name) || "J"}</span>
     </div>
   );
@@ -223,6 +233,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
     null
   );
+  const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
   const [clientReports, setClientReports] = useState<
     Record<
       string,
@@ -366,8 +377,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       ? displayUser.role.trim().toUpperCase()
       : "";
   const isAdmin = normalizedUserRole === "ADMIN";
-  const canEditClients =
-    isAdmin || normalizedUserRole === "COACH";
+  const canEditClients = isAdmin || normalizedUserRole === "COACH";
   const canUseSupervisorChannel =
     normalizedUserRole === "ADMIN" || normalizedUserRole === "COACH";
   const userInitial = displayUser.name?.charAt(0).toUpperCase() ?? "C";
@@ -403,7 +413,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   );
   const layerTargetLabels: Record<AiLayerTarget, string> = {
     COACH: "Coachkanaal",
-    OVERSEER: "Overzichtscoach",
+    OVERSEER: "Lens 2",
     ALL: "Beide agenten",
   };
   const getModelLabel = useCallback(
@@ -2154,6 +2164,73 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     }
   }
 
+  async function handleClientDelete(clientId: string) {
+    const client = clientList.find((entry) => entry.id === clientId);
+    if (!client || deletingClientId === clientId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Weet je zeker dat je ${client.name} wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingClientId(clientId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/clients/${clientId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Coachee verwijderen is mislukt.");
+      }
+
+      const activeRequest = activeCoachRequestsRef.current[clientId];
+      if (activeRequest) {
+        activeRequest.controller.abort();
+        delete activeCoachRequestsRef.current[clientId];
+      }
+
+      delete queuedTranscriptByClientIdRef.current[clientId];
+
+      const nextSelectedClientId =
+        selectedClientId === clientId
+          ? clientList.find((entry) => entry.id !== clientId)?.id ?? null
+          : selectedClientId;
+
+      setClientList((prev) => prev.filter((entry) => entry.id !== clientId));
+      setSelectedClientId(nextSelectedClientId);
+      setClientHistories((prev) => removeRecordKey(prev, clientId));
+      setClientDocuments((prev) => removeRecordKey(prev, clientId));
+      setClientReports((prev) => removeRecordKey(prev, clientId));
+      setCoachPendingByClientId((prev) => removeRecordKey(prev, clientId));
+      setCoachLastRequestIdByClientId((prev) =>
+        removeRecordKey(prev, clientId)
+      );
+      setQueuedTranscriptByClientId((prev) => removeRecordKey(prev, clientId));
+      setClientDialogOpen(false);
+      setEditingClientId(null);
+      setAvatarFile(null);
+      toast.success("Coachee verwijderd.");
+      router.refresh();
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Coachee verwijderen is mislukt."
+      );
+    } finally {
+      setDeletingClientId((current) => (current === clientId ? null : current));
+    }
+  }
+
   async function handleUserSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUserSaving(true);
@@ -2438,7 +2515,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         <div className={bodyClasses}>
           <div className="rounded-3xl bg-white p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2ea3f2] text-white">
                 {selectedClient?.avatarUrl ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2694,21 +2771,38 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                         )}
                       </label>
                     ) : null}
-                    <div className="flex justify-end gap-2 text-sm">
+                    <div className="flex items-center justify-between gap-2 text-sm">
                       <button
                         type="button"
-                        onClick={() => setClientDialogOpen(false)}
-                        className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
+                        onClick={() =>
+                          void handleClientDelete(selectedClient.id)
+                        }
+                        disabled={deletingClientId === selectedClient.id}
+                        className="rounded-lg border border-rose-200 px-4 py-2 font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                       >
-                        Annuleren
+                        {deletingClientId === selectedClient.id
+                          ? "Verwijderen..."
+                          : "Verwijder coachee"}
                       </button>
-                      <button
-                        type="submit"
-                        disabled={isClientSaving}
-                        className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
-                      >
-                        {isClientSaving ? "Opslaan..." : "Opslaan"}
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setClientDialogOpen(false)}
+                          className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
+                        >
+                          Annuleren
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={
+                            isClientSaving ||
+                            deletingClientId === selectedClient.id
+                          }
+                          className="rounded-lg bg-[#2ea3f2] px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                        >
+                          {isClientSaving ? "Opslaan..." : "Opslaan"}
+                        </button>
+                      </div>
                     </div>
                   </form>
                 </DialogContent>
@@ -2746,7 +2840,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   type="button"
                   onClick={handleGenerateReport}
                   disabled={!selectedClientId || isReportGenerating}
-                  className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  className="rounded-full bg-[#2ea3f2] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                 >
                   {isReportGenerating ? "Bezig..." : "Genereer"}
                 </button>
@@ -2804,7 +2898,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             {/* Header */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                <p className="text-xs font-semibold mb-0.5 tracking-wide text-slate-700">
                   Documenten
                 </p>
                 <p className="text-[11px] text-slate-500">
@@ -2818,72 +2912,66 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 type="button"
                 onClick={handleAttachmentButtonClick}
                 disabled={isDocUploading}
-                className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800"
+                className="rounded-full bg-[#2ea3f2] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800"
               >
                 {isDocUploading ? "Uploaden..." : "Upload"}
               </button>
             </div>
 
             {/* Empty state */}
-            {documents.length === 0 ? (
-              <p className="text-[13px] text-slate-500">
-                Nog geen documenten geüpload.
-              </p>
-            ) : (
-              /* File list */
-              <ul className="divide-y divide-slate-100">
-                {documents.map((doc) => (
-                  <li
-                    key={doc.id}
-                    className="flex items-center justify-between py-2"
-                  >
-                    {/* Left */}
-                    <div className="flex items-center gap-3 min-w-0">
-                      <FileText className="size-3.5 min-w-3.5 text-primary" />
-                      <div className="min-w-0">
-                        <p className="truncate text-[12px] text-slate-800">
-                          {doc.originalName}
-                        </p>
-                        <p className="truncate text-[11px] text-slate-500">
-                          {doc.extractionStatus === "READY"
-                            ? "Tekst verwerkt"
-                            : doc.extractionStatus === "FAILED"
-                            ? `Verwerking mislukt${
-                                doc.extractionError
-                                  ? `: ${doc.extractionError}`
-                                  : ""
-                              }`
-                            : "Verwerking bezig..."}
-                        </p>
-                      </div>
-                    </div>
+            {
+              documents.length === 0 ? null : /* File list */ null
+              // <ul className="divide-y divide-slate-100">
+              //   {documents.map((doc) => (
+              //     <li
+              //       key={doc.id}
+              //       className="flex items-center justify-between py-2"
+              //     >
+              //       <div className="flex items-center gap-3 min-w-0">
+              //         <FileText className="size-3.5 min-w-3.5 text-primary" />
+              //         <div className="min-w-0">
+              //           <p className="truncate text-[12px] text-slate-800">
+              //             {doc.originalName}
+              //           </p>
+              //           <p className="truncate text-[11px] text-slate-500">
+              //             {doc.extractionStatus === "READY"
+              //               ? "Tekst verwerkt"
+              //               : doc.extractionStatus === "FAILED"
+              //               ? `Verwerking mislukt${
+              //                   doc.extractionError
+              //                     ? `: ${doc.extractionError}`
+              //                     : ""
+              //                 }`
+              //               : "Verwerking bezig..."}
+              //           </p>
+              //         </div>
+              //       </div>
 
-                    {/* Right */}
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <a
-                        href={doc.storedName}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-slate-500 hover:text-slate-700"
-                      >
-                        Open
-                      </a>
-                      <span className="text-slate-300">·</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDocumentDelete(doc.id)}
-                        disabled={deletingDocumentId === doc.id}
-                        className="text-rose-500 hover:text-rose-600 disabled:opacity-50"
-                      >
-                        {deletingDocumentId === doc.id
-                          ? "Verwijderen..."
-                          : "Verwijder"}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+              //       <div className="flex items-center gap-2 text-[11px]">
+              //         <a
+              //           href={doc.storedName}
+              //           target="_blank"
+              //           rel="noreferrer"
+              //           className="text-slate-500 hover:text-slate-700"
+              //         >
+              //           Open
+              //         </a>
+              //         <span className="text-slate-300">·</span>
+              //         <button
+              //           type="button"
+              //           onClick={() => handleDocumentDelete(doc.id)}
+              //           disabled={deletingDocumentId === doc.id}
+              //           className="text-rose-500 hover:text-rose-600 disabled:opacity-50"
+              //         >
+              //           {deletingDocumentId === doc.id
+              //             ? "Verwijderen..."
+              //             : "Verwijder"}
+              //         </button>
+              //       </div>
+              //     </li>
+              //   ))}
+              // </ul>
+            }
           </div>
 
           <div className="rounded-3xl bg-white p-4">
@@ -2936,33 +3024,33 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
           <div className="">
             <div className="space-y-3 px-3">
               {(displayUser.companyName || displayUser.companyLogoUrl) && (
-                  <div className="flex items-center">
-                    <div className="size-7 shrink-0 overflow-hidden bg-transparent flex items-center justify-center">
-                      {displayUser.companyLogoUrl ? (
-                        <Image
-                          src={displayUser.companyLogoUrl}
-                          alt={displayUser.companyName ?? "Bedrijfslogo"}
-                          width={40}
-                          height={40}
-                          className="size-4.5 object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-xs font-semibold">
-                          {getInitials(displayUser.companyName) || "B"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0 ml-1.5 leading-tight">
-                      <p className="truncate text-sm font-semibold text-slate-900">
-                        {displayUser.companyName}
-                      </p>
-                    </div>
+                <div className="flex items-center">
+                  <div className="size-7 shrink-0 overflow-hidden bg-transparent flex items-center justify-center">
+                    {displayUser.companyLogoUrl ? (
+                      <Image
+                        src={displayUser.companyLogoUrl}
+                        alt={displayUser.companyName ?? "Bedrijfslogo"}
+                        width={40}
+                        height={40}
+                        className="size-4.5 object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-xs font-semibold">
+                        {getInitials(displayUser.companyName) || "B"}
+                      </span>
+                    )}
                   </div>
-                )}
+                  <div className="min-w-0 ml-1.5 leading-tight">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {displayUser.companyName}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-3">
-                <div className="size-9 shrink-0 rounded-full bg-slate-900 text-white overflow-hidden ring-1 ring-slate-900/10">
+                <div className="size-9 shrink-0 rounded-full bg-[#2ea3f2] text-white overflow-hidden ring-1 ring-slate-900/10">
                   {displayUser.image ? (
                     <Image
                       src={displayUser.image}
@@ -3210,7 +3298,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                         <button
                           type="submit"
                           disabled={isCreatingClient}
-                          className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                          className="rounded-lg bg-[#2ea3f2] px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
                         >
                           {isCreatingClient ? "Opslaan..." : "Opslaan"}
                         </button>
@@ -3287,7 +3375,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                       className={[
                         "w-full flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium transition",
                         activeSidebarTab === "user-management"
-                          ? "bg-slate-900/10 text-slate-900"
+                          ? "bg-[#2ea3f2]/10 text-slate-900"
                           : "text-slate-900 hover:bg-slate-100/70",
                       ].join(" ")}
                     >
@@ -3479,95 +3567,93 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                         </label>
                                       </div>
                                       <>
-                                          <label className="flex flex-col gap-1 text-sm">
-                                            Bedrijfsnaam
-                                            <div className="flex items-center rounded-lg border border-slate-300 px-3">
-                                              <Building2 className="mr-2 size-4 text-slate-400" />
-                                              <input
-                                                type="text"
-                                                value={userForm.companyName}
-                                                onChange={(event) =>
-                                                  setUserForm((form) => ({
-                                                    ...form,
-                                                    companyName:
-                                                      event.target.value,
-                                                  }))
-                                                }
-                                                autoComplete="organization"
-                                                className="w-full p-2 text-sm focus:outline-none"
-                                                required={!isAdmin}
-                                              />
-                                            </div>
-                                          </label>
+                                        <label className="flex flex-col gap-1 text-sm">
+                                          Bedrijfsnaam
+                                          <div className="flex items-center rounded-lg border border-slate-300 px-3">
+                                            <Building2 className="mr-2 size-4 text-slate-400" />
+                                            <input
+                                              type="text"
+                                              value={userForm.companyName}
+                                              onChange={(event) =>
+                                                setUserForm((form) => ({
+                                                  ...form,
+                                                  companyName:
+                                                    event.target.value,
+                                                }))
+                                              }
+                                              autoComplete="organization"
+                                              className="w-full p-2 text-sm focus:outline-none"
+                                              required={!isAdmin}
+                                            />
+                                          </div>
+                                        </label>
 
-                                          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-                                            <div className="flex items-center gap-3">
-                                              <div className="flex size-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-600">
-                                                {companyLogoFile ? (
-                                                  <img
-                                                    src={URL.createObjectURL(
-                                                      companyLogoFile
-                                                    )}
-                                                    alt="Nieuw bedrijfslogo"
-                                                    className="size-14 object-cover"
-                                                  />
-                                                ) : userForm.companyLogoUrl ? (
-                                                  <Image
-                                                    src={
-                                                      userForm.companyLogoUrl
-                                                    }
-                                                    alt={
-                                                      userForm.companyName ||
-                                                      "Bedrijfslogo"
-                                                    }
-                                                    width={56}
-                                                    height={56}
-                                                    className="size-14 object-cover"
-                                                    unoptimized
-                                                  />
-                                                ) : (
-                                                  <span className="text-sm font-semibold">
-                                                    {getInitials(
-                                                      userForm.companyName
-                                                    ) || "B"}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div>
-                                                <p className="text-xs font-semibold text-slate-700">
-                                                  Bedrijfslogo
-                                                </p>
-                                                <div className="mt-1 flex items-center gap-2">
-                                                  <input
-                                                    id={companyLogoInputId}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="sr-only"
-                                                    onChange={(event) =>
-                                                      setCompanyLogoFile(
-                                                        event.target
-                                                          .files?.[0] ?? null
-                                                      )
-                                                    }
-                                                  />
-                                                  <label
-                                                    htmlFor={companyLogoInputId}
-                                                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
-                                                  >
-                                                    <ImagePlus className="size-3.5" />
-                                                    Kies bestand
-                                                  </label>
-                                                  <span className="text-xs text-slate-500">
-                                                    {companyLogoFile
-                                                      ? companyLogoFile.name
-                                                      : userForm.companyLogoUrl
-                                                      ? "Huidig logo ingesteld"
-                                                      : "Geen logo geselecteerd"}
-                                                  </span>
-                                                </div>
+                                        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                                          <div className="flex items-center gap-3">
+                                            <div className="flex size-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-600">
+                                              {companyLogoFile ? (
+                                                <img
+                                                  src={URL.createObjectURL(
+                                                    companyLogoFile
+                                                  )}
+                                                  alt="Nieuw bedrijfslogo"
+                                                  className="size-14 object-cover"
+                                                />
+                                              ) : userForm.companyLogoUrl ? (
+                                                <Image
+                                                  src={userForm.companyLogoUrl}
+                                                  alt={
+                                                    userForm.companyName ||
+                                                    "Bedrijfslogo"
+                                                  }
+                                                  width={56}
+                                                  height={56}
+                                                  className="size-14 object-cover"
+                                                  unoptimized
+                                                />
+                                              ) : (
+                                                <span className="text-sm font-semibold">
+                                                  {getInitials(
+                                                    userForm.companyName
+                                                  ) || "B"}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div>
+                                              <p className="text-xs font-semibold text-slate-700">
+                                                Bedrijfslogo
+                                              </p>
+                                              <div className="mt-1 flex items-center gap-2">
+                                                <input
+                                                  id={companyLogoInputId}
+                                                  type="file"
+                                                  accept="image/*"
+                                                  className="sr-only"
+                                                  onChange={(event) =>
+                                                    setCompanyLogoFile(
+                                                      event.target.files?.[0] ??
+                                                        null
+                                                    )
+                                                  }
+                                                />
+                                                <label
+                                                  htmlFor={companyLogoInputId}
+                                                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                                                >
+                                                  <ImagePlus className="size-3.5" />
+                                                  Kies bestand
+                                                </label>
+                                                <span className="text-xs text-slate-500">
+                                                  {companyLogoFile
+                                                    ? companyLogoFile.name
+                                                    : userForm.companyLogoUrl
+                                                    ? "Huidig logo ingesteld"
+                                                    : "Geen logo geselecteerd"}
+                                                </span>
                                               </div>
                                             </div>
                                           </div>
+                                        </div>
                                       </>
                                       <p className="text-xs text-slate-500">
                                         Ingelogd als {displayUser.email}
@@ -3575,7 +3661,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                       <button
                                         type="submit"
                                         disabled={isUserSaving}
-                                        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                                        className="rounded-lg bg-[#2ea3f2] px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
                                       >
                                         {isUserSaving
                                           ? "Opslaan..."
@@ -3702,7 +3788,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                               </span>
                             </label>
                             <label className="flex flex-col gap-1 text-sm">
-                              Overzichtscoach
+                              Lens 2
                               <select
                                 value={overseerModel}
                                 onChange={(event) =>
@@ -3797,7 +3883,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             <button
                               type="submit"
                               disabled={isCoachPromptSaving}
-                              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                              className="rounded-lg bg-[#2ea3f2] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                             >
                               {isCoachPromptSaving ? "Opslaan..." : "Opslaan"}
                             </button>
@@ -3818,7 +3904,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="text-sm font-semibold text-slate-900">
-                                  Overzichtscoach prompt
+                                  Lens 2 prompt
                                 </p>
                                 <p className="text-xs text-slate-500">
                                   Laatste update:{" "}
@@ -3910,7 +3996,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             <button
                               type="submit"
                               disabled={isReportPromptSaving}
-                              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                              className="rounded-lg bg-[#2ea3f2] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                             >
                               {isReportPromptSaving ? "Opslaan..." : "Opslaan"}
                             </button>
@@ -4110,7 +4196,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-semibold text-slate-900">
-                              Feedback overzichtscoach
+                              Feedback Lens 2
                             </p>
                             <p className="text-xs text-slate-500">
                               Laatste {overseerFeedbackItems.length || 0} items
@@ -4190,7 +4276,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             <ArrowLeft className="size-4" />
                           </button>
                           <div className="flex flex-1 items-center gap-3 min-w-0">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white overflow-hidden">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2ea3f2] text-white overflow-hidden">
                               {selectedClient?.avatarUrl ? (
                                 <Image
                                   src={selectedClient.avatarUrl}
@@ -4254,7 +4340,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                   ? "AI-coach"
                                   : displayUser.name ?? "Jij";
                                 const avatarNode = isAi ? (
-                                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#222222] text-white">
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2ea3f2] text-white">
                                     <Sparkles className="size-4" />
                                   </div>
                                 ) : (
@@ -4330,30 +4416,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                               })
                             )}
                           </div>
-                          {process.env.NODE_ENV !== "production" && (
-                            <div className="px-3 md:px-4 pb-2 text-[11px] text-slate-500">
-                              <p className="font-semibold text-slate-600">
-                                Debug chat requests
-                              </p>
-                              <div className="mt-1 space-y-1">
-                                {clientList.map((client) => (
-                                  <p key={`debug-${client.id}`}>
-                                    {client.name}: pending=
-                                    {coachPendingByClientId[client.id]
-                                      ? "yes"
-                                      : "no"}
-                                    , requestId=
-                                    {coachLastRequestIdByClientId[client.id] ??
-                                      "-"}
-                                    , queued=
-                                    {queuedTranscriptByClientId[client.id]
-                                      ? "yes"
-                                      : "no"}
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                           <form
                             onSubmit={handleCoachSubmit}
                             className="px-3 md:px-4 pb-4"
@@ -4402,7 +4464,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                     !selectedClient ||
                                     isSelectedClientCoachPending
                                   }
-                                  className="inline-flex items-center gap-2  aspect-square rounded-full bg-slate-900 px-3 absolute bottom-2 right-2 text-white disabled:opacity-50"
+                                  className="inline-flex items-center gap-2  aspect-square rounded-full bg-[#2ea3f2] px-3 absolute bottom-2 right-2 text-white disabled:opacity-50"
                                 >
                                   <ArrowUp className="size-4" />
                                 </button>
@@ -4687,7 +4749,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
                 >
                   <option value="COACH">Coachkanaal</option>
-                  <option value="OVERSEER">Overzichtscoach</option>
+                  <option value="OVERSEER">Lens 2</option>
                   <option value="ALL">Beide agenten</option>
                 </select>
               </label>
@@ -4824,7 +4886,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
             <DialogDescription>
               Beschrijf hoe de{" "}
               {feedbackTarget?.agentType === "OVERSEER"
-                ? "overzichtscoach"
+                ? "Lens 2"
                 : "coach assistent"}{" "}
               het antwoord kan verbeteren.
             </DialogDescription>
@@ -4865,7 +4927,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 <button
                   type="submit"
                   disabled={isFeedbackSubmitting}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  className="rounded-lg bg-[#2ea3f2] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                 >
                   {isFeedbackSubmitting ? "Versturen..." : "Verstuur feedback"}
                 </button>

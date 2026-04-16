@@ -452,6 +452,41 @@ export async function updateClientAvatar(
   return mapClientProfile(client);
 }
 
+export async function deleteClientById(clientId: string): Promise<{
+  avatarUrl: string | null;
+  documentUrls: string[];
+} | null> {
+  return prisma.$transaction(async (tx) => {
+    const client = await tx.client.findUnique({
+      where: { id: clientId },
+      select: {
+        id: true,
+        avatarUrl: true,
+        documents: {
+          select: {
+            storedName: true,
+          },
+        },
+      },
+    });
+
+    if (!client) {
+      return null;
+    }
+
+    await tx.client.delete({
+      where: { id: clientId },
+    });
+
+    return {
+      avatarUrl: client.avatarUrl ?? null,
+      documentUrls: client.documents
+        .map((document) => document.storedName)
+        .filter((value) => value.trim().length > 0),
+    };
+  });
+}
+
 export async function updateUserProfile(
   userId: string,
   data: {

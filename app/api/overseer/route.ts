@@ -100,7 +100,7 @@ export async function GET(request: Request) {
     });
     return jsonWithRequestId(
       requestId,
-      { error: "Overzichtscoach is tijdelijk niet bereikbaar." },
+      { error: "Lens 2 is tijdelijk niet bereikbaar." },
       { status: 500 }
     );
   }
@@ -418,8 +418,8 @@ export async function POST(request: Request) {
       requestId,
       {
         error: isTimeout
-          ? "Overzichtscoach reageerde niet binnen de ingestelde tijd."
-          : "Overzichtscoach is tijdelijk niet bereikbaar.",
+          ? "Lens 2 reageerde niet binnen de ingestelde tijd."
+          : "Lens 2 is tijdelijk niet bereikbaar.",
         requestId,
       },
       { status }

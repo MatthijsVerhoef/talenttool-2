@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   ClipboardCopy,
   Shield,
+  Trash2,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -66,6 +67,8 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const coachCount = useMemo(
     () => users.filter((user) => user.role === "COACH").length,
@@ -91,6 +94,9 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
       }
       setUsers(Array.isArray(data.users) ? data.users : []);
       setInvites(Array.isArray(data.invites) ? data.invites : []);
+      setCurrentUserId(
+        typeof data.currentUserId === "string" ? data.currentUserId : null
+      );
     } catch (fetchError) {
       const message =
         fetchError instanceof Error
@@ -163,7 +169,9 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
     const confirmed =
       typeof window === "undefined"
         ? true
-        : window.confirm("Weet je zeker dat je deze uitnodiging wilt intrekken?");
+        : window.confirm(
+            "Weet je zeker dat je deze uitnodiging wilt intrekken?"
+          );
 
     if (!confirmed) {
       return;
@@ -189,9 +197,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
           : "Uitnodiging intrekken is mislukt.";
       setError(message);
     } finally {
-      setRevokingInviteId((current) =>
-        current === inviteId ? null : current
-      );
+      setRevokingInviteId((current) => (current === inviteId ? null : current));
     }
   }
 
@@ -233,6 +239,50 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
       setError(message);
     } finally {
       setUpdatingUserId(null);
+    }
+  }
+
+  async function handleUserDelete(userId: string) {
+    const target = users.find((entry) => entry.id === userId);
+    if (!target || deletingUserId === userId) {
+      return;
+    }
+
+    if (currentUserId === userId) {
+      setError("Je kunt je eigen account niet verwijderen.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Weet je zeker dat je ${target.name || target.email} wilt verwijderen?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingUserId(userId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Gebruiker verwijderen is mislukt.");
+      }
+
+      setUsers((prev) => prev.filter((user) => user.id !== userId));
+    } catch (deleteError) {
+      const message =
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Gebruiker verwijderen is mislukt.";
+      setError(message);
+    } finally {
+      setDeletingUserId((current) => (current === userId ? null : current));
     }
   }
 
@@ -331,7 +381,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
               <button
                 type="button"
                 onClick={() => setInviteDialogOpen(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#222222] px-4 py-2 text-sm text-white hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#2ea3f2] px-4 py-2 text-sm text-white hover:bg-slate-800"
               >
                 <UserPlus className="size-4" />
                 Uitnodigen
@@ -419,13 +469,14 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                       <th className="px-3 py-2">E-mail</th>
                       <th className="px-3 py-2">Rol</th>
                       <th className="px-3 py-2">Aangemaakt</th>
+                      <th className="px-3 py-2 text-right">Acties</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {isLoading ? (
                       <tr>
                         <td
-                          colSpan={4}
+                          colSpan={5}
                           className="px-3 py-6 text-center text-slate-500"
                         >
                           Gebruikers worden geladen...
@@ -434,7 +485,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                     ) : users.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={4}
+                          colSpan={5}
                           className="px-3 py-6 text-center text-slate-500"
                         >
                           Nog geen gebruikers gevonden.
@@ -443,6 +494,9 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                     ) : (
                       users.map((user) => {
                         const isRowUpdating = updatingUserId === user.id;
+                        const isRowDeleting = deletingUserId === user.id;
+                        const isCurrentUser = currentUserId === user.id;
+                        const isRowBusy = isRowUpdating || isRowDeleting;
                         const initials = getInitials(user.name, user.email);
                         return (
                           <tr key={user.id}>
@@ -480,7 +534,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                                     event.target.value as AdminUser["role"]
                                   )
                                 }
-                                disabled={isRowUpdating}
+                                disabled={isRowBusy}
                                 className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-60"
                                 aria-label="Wijzig rol"
                               >
@@ -503,6 +557,21 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                                   year: "numeric",
                                 }
                               )}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleUserDelete(user.id)}
+                                disabled={isRowDeleting || isCurrentUser}
+                                className="inline-flex items-center gap-1 rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Trash2 className="size-3.5" />
+                                {isCurrentUser
+                                  ? "Eigen account"
+                                  : isRowDeleting
+                                  ? "Verwijderen..."
+                                  : "Verwijder"}
+                              </button>
                             </td>
                           </tr>
                         );
@@ -570,7 +639,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                 <button
                   type="submit"
                   disabled={isCreatingInvite}
-                  className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  className="rounded-xl bg-[#2ea3f2] px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                 >
                   {isCreatingInvite ? "Versturen..." : "Uitnodigen"}
                 </button>

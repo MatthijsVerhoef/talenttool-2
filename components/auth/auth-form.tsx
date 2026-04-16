@@ -292,7 +292,7 @@ export function AuthForm({ invite }: AuthFormProps = {}) {
 
             <button
               type="submit"
-              className="w-full rounded-full h-11 bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 flex items-center justify-center gap-2"
+              className="w-full rounded-full h-11 bg-[#2ea3f2] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 flex items-center justify-center gap-2"
             >
               Volgende <ArrowRight className="h-4 w-4" />
             </button>
@@ -437,7 +437,7 @@ function SubmitButton({
     <button
       type="submit"
       disabled={disabled}
-      className={`rounded-full h-11 bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50 w-full ${className}`}
+      className={`rounded-full h-11 bg-[#2ea3f2] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50 w-full ${className}`}
     >
       {children}
     </button>

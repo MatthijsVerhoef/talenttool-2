@@ -63,6 +63,21 @@ export async function deleteFromBlob(urls: string | string[]): Promise<void> {
   await del(urls, { token: BLOB_RW_TOKEN });
 }
 
+export async function deleteFromBlobSafely(
+  urls: string | string[]
+): Promise<void> {
+  const values = Array.isArray(urls) ? urls : [urls];
+
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    await deleteFromBlob(trimmed).catch(() => undefined);
+  }
+}
+
 async function ensureBuffer(input: ArrayBuffer | Uint8Array | Blob | Buffer) {
   if (input instanceof Buffer) {
     return input;
