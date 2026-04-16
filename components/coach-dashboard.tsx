@@ -536,6 +536,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   const isMobileDetailsView =
     isMobile && isDashboardTab && mobileView === "details";
   const showMenuButton = isMobile && mobileView !== "list";
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+  const [summaryCanExpand, setSummaryCanExpand] = useState(false);
+  const summaryRef = useRef<HTMLParagraphElement | null>(null);
 
   const selectedClientHistory = selectedClientId
     ? clientHistories[selectedClientId]
@@ -2437,6 +2440,9 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
   }, [selectedClient]);
 
   const focusArea = selectedClient?.focusArea ?? "";
+  const selectedClientSummary =
+    selectedClient?.summary?.trim() ||
+    "Selecteer een Coachee om details te bekijken.";
 
   const focusTags = useMemo(() => {
     return focusArea
@@ -2461,6 +2467,49 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
 
   const coachMessagesRef = useRef<HTMLDivElement | null>(null);
   const overseerMessagesRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setIsSummaryExpanded(false);
+  }, [selectedClientId]);
+
+  useEffect(() => {
+    const summaryElement = summaryRef.current;
+    if (!summaryElement || !selectedClient?.summary?.trim()) {
+      setSummaryCanExpand(false);
+      return;
+    }
+
+    const measureSummary = () => {
+      const styles = window.getComputedStyle(summaryElement);
+      const lineHeight =
+        Number.parseFloat(styles.lineHeight) ||
+        Number.parseFloat(styles.fontSize) * 1.5 ||
+        0;
+
+      const previousDisplay = summaryElement.style.display;
+      const previousOverflow = summaryElement.style.overflow;
+      const previousWebkitLineClamp = summaryElement.style.webkitLineClamp;
+
+      summaryElement.style.display = "block";
+      summaryElement.style.overflow = "visible";
+      summaryElement.style.webkitLineClamp = "unset";
+
+      const fullHeight = summaryElement.scrollHeight;
+
+      summaryElement.style.display = previousDisplay;
+      summaryElement.style.overflow = previousOverflow;
+      summaryElement.style.webkitLineClamp = previousWebkitLineClamp;
+
+      setSummaryCanExpand(fullHeight > lineHeight * 3 + 1);
+    };
+
+    measureSummary();
+    window.addEventListener("resize", measureSummary);
+
+    return () => {
+      window.removeEventListener("resize", measureSummary);
+    };
+  }, [selectedClientId, selectedClient?.summary]);
 
   useEffect(() => {
     if (activeChannel === "coach") {
@@ -2543,10 +2592,26 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                 </p>
               </div>
             </div>
-            <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
-              {selectedClient?.summary ||
-                "Selecteer een Coachee om details te bekijken."}
-            </p>
+            <div className="mt-3">
+              <p
+                ref={summaryRef}
+                className={`text-[13px] leading-relaxed text-slate-600 ${
+                  !isSummaryExpanded ? "line-clamp-3" : ""
+                }`}
+              >
+                {selectedClientSummary}
+              </p>
+              {summaryCanExpand && (
+                <button
+                  type="button"
+                  aria-expanded={isSummaryExpanded}
+                  onClick={() => setIsSummaryExpanded((current) => !current)}
+                  className="mt-1 text-[12px] font-medium text-[#2ea3f2] transition hover:text-[#2386c9]"
+                >
+                  {isSummaryExpanded ? "Lees minder" : "Lees meer"}
+                </button>
+              )}
+            </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {focusTags.length > 0 ? (
                 focusTags.map((tag) => (
