@@ -1782,7 +1782,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         const errorMessage =
           typeof data.error === "string"
             ? data.error
-            : "Supervisor (your coaching supervisor) kon niet reageren.";
+            : "Lens 2 (your coaching supervisor) kon niet reageren.";
         throw new Error(`${errorMessage} (requestId: ${responseRequestId})`);
       }
       setOverseerThread(data.thread ?? []);
@@ -2557,7 +2557,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                   : "hover:text-slate-900"
               }`}
             >
-              Supervisor (privé)
+              Lens 2
             </button>
           )}
         </div>
@@ -4560,9 +4560,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                           >
                             {overseerThread.length === 0 ? (
                               <div className="rounded-xl border border-slate-200 bg-white p-4 text-slate-500">
-                                Supervisor (your coaching supervisor) is privé
-                                voor jouw account. Vraag naar trends en
-                                signalen.
+                                Lens 2 (your coaching supervisor) is privé voor
+                                jouw account. Vraag naar trends en signalen.
                               </div>
                             ) : (
                               overseerThread.map((message) => {
@@ -4597,7 +4596,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                                     contextClientId
                                   : null;
                                 const senderName = isAssistant
-                                  ? "Overseer (your coaching supervisor)"
+                                  ? "Lens 2 (your coaching supervisor)"
                                   : displayUser.name ?? "Jij";
                                 const avatarNode = isAssistant ? (
                                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-50 text-purple-600">
