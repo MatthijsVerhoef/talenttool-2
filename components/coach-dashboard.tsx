@@ -195,6 +195,12 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
         title: "Mijn profiel",
         description: "Beheer je accountgegevens en profielfoto.",
       },
+      {
+        id: "preferences",
+        label: "Voorkeuren",
+        title: "Voorkeuren",
+        description: "Pas het gedrag van de applicatie aan naar jouw wensen.",
+      },
     ],
     []
   );
@@ -488,11 +494,6 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       onSave: handleClientSave,
       onDelete: (clientId: string) => void handleClientDelete(clientId),
     },
-    autoSendProps: {
-      enabled: autoSendAfterTranscription,
-      disabled: !selectedClient,
-      onChange: setAutoSendAfterTranscription,
-    },
     reportProps: {
       reports: clientReportList,
       isLoading: isReportLoading,
@@ -575,6 +576,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
       onSave: handleUserSave,
       userAvatarInputId,
       companyLogoInputId,
+      autoSendAfterTranscription,
+      onAutoSendChange: setAutoSendAfterTranscription,
     },
     footerProps: {
       isSigningOut,

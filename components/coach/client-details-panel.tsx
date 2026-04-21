@@ -10,7 +10,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
 import { ReportPanel } from "@/components/reports/report-panel";
 import type { Report } from "@/components/reports/report-panel";
 import type { ClientProfile } from "@/lib/data/clients";
@@ -66,12 +65,6 @@ interface EditClientProps {
   onDelete: (clientId: string) => void;
 }
 
-interface AutoSendProps {
-  enabled: boolean;
-  disabled: boolean;
-  onChange: (value: boolean) => void;
-}
-
 interface ReportSectionProps {
   reports: Report[];
   isLoading: boolean;
@@ -93,7 +86,6 @@ export interface ClientDetailsPanelProps {
   channelProps: ChannelProps;
   clientProps: ClientSummaryProps;
   editClientProps: EditClientProps;
-  autoSendProps: AutoSendProps;
   reportProps: ReportSectionProps;
   documentProps: DocumentProps;
 }
@@ -103,7 +95,6 @@ export function ClientDetailsPanel({
   channelProps,
   clientProps,
   editClientProps,
-  autoSendProps,
   reportProps,
   documentProps,
 }: ClientDetailsPanelProps) {
@@ -139,8 +130,6 @@ export function ClientDetailsPanel({
     onSave,
     onDelete,
   } = editClientProps;
-  const { enabled: autoSendEnabled, disabled: autoSendDisabled, onChange: onAutoSendChange } =
-    autoSendProps;
   const { documents, isUploading, onUpload } = documentProps;
 
   const toggleClasses = [
@@ -469,17 +458,6 @@ export function ClientDetailsPanel({
               </DialogContent>
             </Dialog>
           )}
-        </div>
-        <div className="rounded-3xl bg-white p-4 space-y-0 flex items-center justify-center w-full">
-          <label className="inline-flex items-center w-full gap-2 pl-1 text-[11px] text-slate-500">
-            <Switch
-              checked={autoSendEnabled}
-              onCheckedChange={onAutoSendChange}
-              disabled={autoSendDisabled}
-              aria-label="Auto-send after transcription"
-            />
-            <span>Verzend na transcriptie</span>
-          </label>
         </div>
         <ReportPanel
           reports={reportProps.reports}

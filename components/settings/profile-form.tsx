@@ -98,7 +98,7 @@ export function ProfileForm({
             />
             <label
               htmlFor={userAvatarInputId}
-              className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Kies bestand
             </label>
@@ -116,7 +116,7 @@ export function ProfileForm({
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
           Voornaam
           <input
             type="text"
@@ -128,11 +128,11 @@ export function ProfileForm({
               }))
             }
             autoComplete="given-name"
-            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+            className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm text-slate-900 focus:border-[#2ea3f2] focus:outline-none"
             required
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
           Achternaam
           <input
             type="text"
@@ -144,14 +144,14 @@ export function ProfileForm({
               }))
             }
             autoComplete="family-name"
-            className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+            className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm text-slate-900 focus:border-[#2ea3f2] focus:outline-none"
           />
         </label>
       </div>
       <>
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
           Bedrijfsnaam
-          <div className="flex items-center rounded-lg border border-slate-300 px-3">
+          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:border-[#2ea3f2]">
             <Building2 className="mr-2 size-4 text-slate-400" />
             <input
               type="text"
@@ -163,13 +163,13 @@ export function ProfileForm({
                 }))
               }
               autoComplete="organization"
-              className="w-full p-2 text-sm focus:outline-none"
+              className="w-full bg-transparent p-2.5 text-sm text-slate-900 focus:outline-none"
               required={!isAdmin}
             />
           </div>
         </label>
 
-        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+        <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
           <div className="flex items-center gap-3">
             <div className="flex size-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-600">
               {companyLogoFile ? (
@@ -209,7 +209,7 @@ export function ProfileForm({
                 />
                 <label
                   htmlFor={companyLogoInputId}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   <ImagePlus className="size-3.5" />
                   Kies bestand
@@ -230,7 +230,7 @@ export function ProfileForm({
       <button
         type="submit"
         disabled={isUserSaving}
-        className="rounded-lg bg-[#2ea3f2] px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        className="rounded-full bg-[#2ea3f2] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1b8fd9] disabled:opacity-50"
       >
         {isUserSaving ? "Opslaan..." : "Opslaan"}
       </button>
