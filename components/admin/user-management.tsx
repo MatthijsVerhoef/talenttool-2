@@ -8,6 +8,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 
 import {
@@ -298,9 +299,9 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex items-center rounded-full border border-white/60 bg-white/40 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-white/60 transition"
+              className="rounded-full border border-white/60 bg-white/40 size-8 flex items-center  justify-center text-sm font-medium text-slate-700 hover:bg-white/60 transition"
             >
-              Terug
+              <X className="size-4.5" />
             </button>
           </header>
 
@@ -368,7 +369,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                 <button
                   type="button"
                   onClick={() => setInviteDialogOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-full bg-[#2ea3f2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1b8fd9] transition"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#2ea3f2] px-4 py-2 text-xs font-medium text-white hover:bg-[#1b8fd9] transition"
                 >
                   <UserPlus className="size-4" />
                   Uitnodigen
@@ -433,7 +434,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                           }
                           disabled={isRowBusy}
                           aria-label="Wijzig rol"
-                          className="rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-semibold text-slate-700 focus:border-[#2ea3f2] focus:outline-none disabled:opacity-60"
+                          className="rounded-full border border-border bg-white/70 pr-3 pl-2.5 py-1 text-xs font-semibold text-slate-700 focus:border-[#2ea3f2] focus:outline-none disabled:opacity-60"
                         >
                           {roleOptions.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -459,7 +460,7 @@ export function AdminUserManagement({ onBack }: AdminUserManagementProps) {
                           type="button"
                           onClick={() => handleUserDelete(user.id)}
                           disabled={isRowDeleting || isCurrentUser}
-                          className="inline-flex items-center gap-1 rounded-full border border-rose-200/70 bg-white/50 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-full border border-rose-200/70 bg-white/50 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="size-3.5" />
                           {isCurrentUser
