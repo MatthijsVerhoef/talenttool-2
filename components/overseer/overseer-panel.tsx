@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { AlertTriangle, ArrowUp, Loader2, MessageSquare, Sparkles } from "lucide-react";
 
+import { VoiceRecorder } from "@/components/chat/voice-recorder";
+
 import type { AgentMessage } from "@/lib/data/sessions";
 import type { AgentKindType } from "@/components/admin/prompt-center-panel";
 
@@ -64,6 +66,8 @@ export interface OverseerInputProps {
   onChange: (value: string) => void;
   isLoading: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onTranscript: (text: string) => void;
+  onVoiceError: (err: { message: string; requestId?: string }) => void;
 }
 
 export interface OverseerPanelProps {
@@ -81,7 +85,8 @@ export function OverseerPanel({ threadProps, inputProps }: OverseerPanelProps) {
     isAdmin,
     onFeedback,
   } = threadProps;
-  const { value, onChange, isLoading, onSubmit } = inputProps;
+  const { value, onChange, isLoading, onSubmit, onTranscript, onVoiceError } =
+    inputProps;
 
   return (
     <>
@@ -217,6 +222,12 @@ export function OverseerPanel({ threadProps, inputProps }: OverseerPanelProps) {
           >
             <ArrowUp className="size-4" />
           </button>
+          <VoiceRecorder
+            disabled={isLoading}
+            languageHint="nl"
+            onTranscript={onTranscript}
+            onError={onVoiceError}
+          />
         </div>
       </form>
     </>

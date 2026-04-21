@@ -366,6 +366,26 @@ export function useOverseerSession({
     }
   }
 
+  function handleOverseerVoiceTranscript(text: string) {
+    const transcript = text.trim();
+    if (!transcript) return;
+    setOverseerInput((prev) => {
+      if (!prev.trim()) return transcript;
+      return `${prev.trimEnd()} ${transcript}`;
+    });
+  }
+
+  function handleOverseerVoiceError(err: {
+    message: string;
+    requestId?: string;
+  }) {
+    const message =
+      err.requestId && !err.message.includes("requestId:")
+        ? `${err.message} (requestId: ${err.requestId})`
+        : err.message;
+    onError(message);
+  }
+
   return {
     overseerThread,
     overseerInput,
@@ -374,5 +394,7 @@ export function useOverseerSession({
     overseerMessagesRef,
     fetchOverseerThread,
     handleOverseerSubmit,
+    handleOverseerVoiceTranscript,
+    handleOverseerVoiceError,
   };
 }

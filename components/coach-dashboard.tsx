@@ -329,6 +329,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     isOverseerLoading,
     overseerMessagesRef,
     handleOverseerSubmit,
+    handleOverseerVoiceTranscript,
+    handleOverseerVoiceError,
   } = useOverseerSession({
     selectedClientId,
     canUseSupervisorChannel,
@@ -752,6 +754,8 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             onChange: setOverseerInput,
                             isLoading: isOverseerLoading,
                             onSubmit: handleOverseerSubmit,
+                            onTranscript: handleOverseerVoiceTranscript,
+                            onVoiceError: handleOverseerVoiceError,
                           }}
                         />
                       )}
