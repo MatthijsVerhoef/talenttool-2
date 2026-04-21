@@ -1,32 +1,22 @@
-import { NextResponse } from "next/server";
-
-import { auth } from "@/lib/auth";
+import { getServerSessionFromRequest } from "@/lib/auth";
 import {
   buildInviteUrl,
   createUserInvite,
 } from "@/lib/data/users";
 import { sendUserInviteEmail } from "@/lib/email/invitations";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId } from "@/lib/observability";
 import { prisma } from "@/lib/prisma";
 
-function jsonWithRequestId(requestId: string, body: unknown, init?: ResponseInit) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  return response;
-}
-
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
-  const session = await auth.api.getSession({
-    headers: request.headers,
+  const session = await getServerSessionFromRequest(request, {
+    requestId,
+    source: "/api/admin/invitations POST",
   });
 
   if (!session || session.user.role !== "ADMIN") {
-    return jsonWithRequestId(
-      requestId,
-      { error: "Niet geautoriseerd" },
-      { status: 403 }
-    );
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 403 });
   }
 
   const payload = await request.json().catch(() => null);

@@ -1,17 +1,17 @@
-import { NextResponse } from "next/server";
 import { AgentKind } from "@prisma/client";
 
 import { OpenAITimeoutError } from "@/lib/ai/openai";
 import { DEFAULT_COACH_ROLE_PROMPT, DEFAULT_OVERSEER_ROLE_PROMPT } from "@/lib/agents/prompts";
 import { refinePromptWithFeedback } from "@/lib/agents/prompt-refiner";
 import { SessionGuardError, requireAdminSession } from "@/lib/auth-guards";
+import { listAgentFeedback } from "@/lib/data/feedback";
 import {
   getCoachPrompt,
   getOverseerPrompt,
-  listAgentFeedback,
   updateCoachPrompt,
   updateOverseerPrompt,
-} from "@/lib/data/store";
+} from "@/lib/data/prompts";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 import { getClientIp } from "@/lib/request";
 
@@ -32,16 +32,6 @@ async function getBasePrompt(agentType: AgentKind) {
   }
   const record = await getOverseerPrompt();
   return record?.content ?? DEFAULT_OVERSEER_ROLE_PROMPT;
-}
-
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit,
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  return response;
 }
 
 export async function POST(request: Request) {

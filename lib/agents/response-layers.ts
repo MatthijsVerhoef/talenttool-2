@@ -1,8 +1,8 @@
 import type { AgentKind } from "@prisma/client";
 
 import { runAgentCompletion } from "@/lib/ai/openai";
-import type { ClientProfile } from "@/lib/data/store";
-import { listActiveResponseLayers } from "@/lib/data/store";
+import type { ClientProfile } from "@/lib/data/clients";
+import { listActiveResponseLayers } from "@/lib/data/layers";
 import { logError, logInfo } from "@/lib/observability";
 
 const RESPONSE_LAYER_TIMEOUT_MS = Number(

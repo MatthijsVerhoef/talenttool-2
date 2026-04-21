@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
 import type { UserRole } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -261,5 +262,94 @@ export function mapAdminUserSummary(user: {
     role: user.role,
     createdAt: user.createdAt.toISOString(),
     image: user.image ?? null,
+  };
+}
+
+export async function getUserBranding(userId: string): Promise<{
+  companyName: string | null;
+  companyLogoUrl: string | null;
+}> {
+  if (!userId) {
+    return {
+      companyName: null,
+      companyLogoUrl: null,
+    };
+  }
+
+  const rows = await prisma.$queryRaw<
+    Array<{ companyName: string | null; companyLogoUrl: string | null }>
+  >`
+    SELECT "companyName", "companyLogoUrl"
+    FROM "User"
+    WHERE "id" = ${userId}
+    LIMIT 1
+  `;
+
+  return (
+    rows[0] ?? {
+      companyName: null,
+      companyLogoUrl: null,
+    }
+  );
+}
+
+export async function updateUserProfile(
+  userId: string,
+  data: {
+    name?: string;
+    image?: string;
+    avatarAlt?: string;
+    companyName?: string | null;
+    companyLogoUrl?: string | null;
+  }
+) {
+  const { companyName, companyLogoUrl, ...profileData } = data;
+
+  const user = Object.keys(profileData).length
+    ? await prisma.user.update({
+        where: { id: userId },
+        data: profileData,
+      })
+    : await prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+      });
+
+  const hasBrandingUpdate =
+    companyName !== undefined || companyLogoUrl !== undefined;
+
+  if (!hasBrandingUpdate) {
+    return {
+      ...user,
+      ...(await getUserBranding(userId)),
+    };
+  }
+
+  const updateAssignments: Prisma.Sql[] = [];
+
+  if (companyName !== undefined) {
+    updateAssignments.push(
+      Prisma.sql`"companyName" = ${companyName?.trim() || null}`
+    );
+  }
+
+  if (companyLogoUrl !== undefined) {
+    updateAssignments.push(
+      Prisma.sql`"companyLogoUrl" = ${companyLogoUrl?.trim() || null}`
+    );
+  }
+
+  updateAssignments.push(Prisma.sql`"updatedAt" = NOW()`);
+
+  await prisma.$executeRaw(
+    Prisma.sql`
+      UPDATE "User"
+      SET ${Prisma.join(updateAssignments, ", ")}
+      WHERE "id" = ${userId}
+    `
+  );
+
+  return {
+    ...user,
+    ...(await getUserBranding(userId)),
   };
 }

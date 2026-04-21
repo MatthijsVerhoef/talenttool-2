@@ -18,7 +18,7 @@ export async function refinePromptWithFeedback(options: {
   requestId?: string;
 }): Promise<string> {
   const roleLabel =
-    options.agentType === "COACH" ? "coach assistent" : "Lens 2";
+    options.agentType === "COACH" ? "coach assistent" : "Overzichtscoach";
   const feedbackText = options.feedback
     .map(
       (item, index) =>

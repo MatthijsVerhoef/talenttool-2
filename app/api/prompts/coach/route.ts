@@ -1,24 +1,13 @@
-import { NextResponse } from "next/server";
-
 import { DEFAULT_COACH_ROLE_PROMPT } from "@/lib/agents/prompts";
 import {
   SessionGuardError,
   requireAdminSession,
   requireAuthenticatedSession,
 } from "@/lib/auth-guards";
-import { getCoachPrompt, updateCoachPrompt } from "@/lib/data/store";
+import { getCoachPrompt, updateCoachPrompt } from "@/lib/data/prompts";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 import { getClientIp } from "@/lib/request";
-
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit,
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  return response;
-}
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);

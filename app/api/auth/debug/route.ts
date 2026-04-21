@@ -1,27 +1,19 @@
-import { NextResponse } from "next/server";
-
 import {
   getCookieNamesFromHeader,
   getServerSessionFromRequest,
   isAuthDebugEnabled,
 } from "@/lib/auth";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function jsonWithHeaders(requestId: string, body: unknown, init?: ResponseInit) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
-
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
 
   if (process.env.NODE_ENV === "production") {
-    return jsonWithHeaders(requestId, { error: "Niet gevonden." }, { status: 404 });
+    return jsonWithRequestId(requestId, { error: "Niet gevonden." }, { status: 404 });
   }
 
   const cookieHeader = request.headers.get("cookie") ?? "";
@@ -30,7 +22,7 @@ export async function GET(request: Request) {
     source: "/api/auth/debug",
   });
 
-  return jsonWithHeaders(requestId, {
+  return jsonWithRequestId(requestId, {
     authDebugEnabled: isAuthDebugEnabled(),
     hasSession: Boolean(session),
     userId: session?.user?.id ?? null,

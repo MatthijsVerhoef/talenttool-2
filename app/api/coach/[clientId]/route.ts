@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
-
 import { runCoachAgent } from "@/lib/agents/service";
 import { OpenAIRateLimitError, OpenAITimeoutError } from "@/lib/ai/openai";
 import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
-import { getSessionWindow } from "@/lib/data/store";
+import { getSessionWindow } from "@/lib/data/sessions";
+import { jsonWithRequestId } from "@/lib/http/response";
 import {
   getRequestId,
   logError,
@@ -19,17 +18,6 @@ interface Params {
 }
 
 const DEBUG_DOC_CONTEXT = process.env.DEBUG_DOC_CONTEXT === "1";
-
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
 
 export async function GET(request: Request, { params }: Params) {
   const requestId = getRequestId(request);

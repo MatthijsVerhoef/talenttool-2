@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 
 import { CoachDashboard } from "@/components/coach-dashboard";
 import { getServerSessionFromCookieHeader } from "@/lib/auth";
-import { getClients, getUserBranding } from "@/lib/data/store";
+import { getClients } from "@/lib/data/clients";
+import { getUserBranding } from "@/lib/data/users";
 import { syncUserRole } from "@/lib/user-role";
 import type { UserRole } from "@prisma/client";
 

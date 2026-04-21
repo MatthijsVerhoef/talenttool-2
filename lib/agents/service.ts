@@ -8,27 +8,25 @@ import {
   DEFAULT_REPORT_ROLE_PROMPT,
 } from "@/lib/agents/prompts";
 import {
-  getAIModelSettings,
-  appendOverseerMessage,
+  buildCoachSystemPrompt,
+  buildDocumentContextSection,
+  formatMessageForAgent,
+  normalizeRole,
+} from "@/lib/agents/prompt-builder";
+import { getClient, listClientDigestsForCoach, type ClientProfile } from "@/lib/data/clients";
+import { getClientDocumentContext, type DocumentContextSource } from "@/lib/retrieval/client-document-context";
+import { getCoachPrompt, getOverseerPrompt, getReportPrompt } from "@/lib/data/prompts";
+import { getLatestClientReport, saveClientReport } from "@/lib/data/reports";
+import {
   appendClientMessage,
-  getClient,
-  getCoachPrompt,
-  getClientDocumentContext,
-  getLatestClientReport,
+  appendOverseerMessage,
   getOverseerWindow,
-  getOverseerPrompt,
-  getReportPrompt,
   getSessionWindow,
-  listClientDigestsForCoach,
-  type DocumentContextSource,
-  type OverseerMessageContext,
-  saveClientReport,
   type AgentRole,
-  type ClientProfile,
-} from "@/lib/data/store";
+  type OverseerMessageContext,
+} from "@/lib/data/sessions";
+import { getAIModelSettings } from "@/lib/data/settings";
 import { logError, logInfo, withTimer } from "@/lib/observability";
-
-type ChatRole = "user" | "assistant" | "system";
 
 const COACH_DOCUMENT_CONTEXT_BUDGET_CHARS = Number(
   process.env.COACH_DOCUMENT_CONTEXT_BUDGET_CHARS ??
@@ -40,13 +38,6 @@ const REPORT_DOCUMENT_CONTEXT_BUDGET_CHARS = Number(
     process.env.DOCUMENT_CONTEXT_BUDGET_CHARS ??
     "8000"
 );
-
-function normalizeRole(role: string): ChatRole {
-  if (role === "assistant" || role === "system") {
-    return role;
-  }
-  return "user";
-}
 
 export interface AgentReply {
   reply: string;
@@ -532,57 +523,6 @@ export async function generateClientReport(
     });
     throw error;
   }
-}
-
-function buildCoachSystemPrompt(
-  basePrompt: string,
-  client: ClientProfile,
-  documentContextText: string
-) {
-  const goals = client.goals.length
-    ? client.goals.join("; ")
-    : "Nog geen doelen vastgelegd";
-  const docText = buildDocumentContextSection(documentContextText);
-  const primaryPrompt = [
-    "PROMPT_CENTER_COACH_PROMPT (LEIDEND)",
-    "<<<PROMPT_CENTER_COACH_PROMPT>>>",
-    basePrompt,
-    "<<<END_PROMPT_CENTER_COACH_PROMPT>>>",
-  ].join("\n");
-
-  return [
-    primaryPrompt,
-    `Coachee: ${client.name}. Focus: ${client.focusArea}. Samenvatting: ${client.summary}. Doelen: ${goals}.`,
-    "Aanvullende systeemcontext (niet leidend): gebruik documentcontext als extra bron naast chatgeschiedenis en algemene coachkennis. Als documentcontext ontbreekt of onvolledig is, geef alsnog een bruikbaar inhoudelijk antwoord en stel hooguit een korte vervolgvraag om ontbrekende details op te halen.",
-    docText,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-function formatMessageForAgent(message: {
-  source: string;
-  role: AgentRole;
-  content: string;
-}) {
-  const sourceLabel =
-    message.source === "HUMAN" ? "Menselijke coach" : "AI-coach";
-  return `[${sourceLabel} · rol: ${message.role}]\n${message.content}`;
-}
-
-function buildDocumentContextSection(contextText: string) {
-  const trimmed = contextText.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  return [
-    "CLIENT_DOCUMENT_CONTEXT",
-    "Gebruik alleen deze context als ondersteunend bewijs; verzin geen ontbrekende details.",
-    "<<<CLIENT_DOCUMENT_CONTEXT>>>",
-    trimmed,
-    "<<<END_CLIENT_DOCUMENT_CONTEXT>>>",
-  ].join("\n");
 }
 
 function buildReportDocumentQuery(

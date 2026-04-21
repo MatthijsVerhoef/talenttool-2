@@ -1,18 +1,11 @@
-import { NextResponse } from "next/server";
-
 import type { UserRole } from "@prisma/client";
 
 import { getServerSessionFromRequest } from "@/lib/auth";
 import { isAdmin, isCoach } from "@/lib/authz";
-import { createClient, getClients } from "@/lib/data/store";
+import { createClient, getClients } from "@/lib/data/clients";
 import { isCoachUser } from "@/lib/data/users";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId } from "@/lib/observability";
-
-function jsonNoStore(body: unknown, init?: ResponseInit) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -22,18 +15,14 @@ export async function GET(request: Request) {
   });
 
   if (!session) {
-    const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 401 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 401 });
   }
 
   const clients = await getClients({
     userId: session.user.id,
     role: session.user.role as UserRole,
   });
-  const response = jsonNoStore({ clients });
-  response.headers.set("x-request-id", requestId);
-  return response;
+  return jsonWithRequestId(requestId, { clients });
 }
 
 export async function POST(request: Request) {
@@ -44,9 +33,7 @@ export async function POST(request: Request) {
   });
 
   if (!session) {
-    const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 401 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 401 });
   }
 
   const user = { id: session.user.id, role: session.user.role };
@@ -54,16 +41,12 @@ export async function POST(request: Request) {
   const coach = isCoach(user);
 
   if (!admin && !coach) {
-    const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 403 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 403 });
   }
 
   const payload = await request.json().catch(() => null);
   if (!payload || typeof payload !== "object") {
-    const response = jsonNoStore({ error: "Ongeldig verzoek" }, { status: 400 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Ongeldig verzoek" }, { status: 400 });
   }
 
   const { name, managerName, focusArea, summary, goals, avatarUrl, coachId } = payload as {
@@ -77,9 +60,7 @@ export async function POST(request: Request) {
   };
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    const response = jsonNoStore({ error: "Naam is verplicht" }, { status: 400 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Naam is verplicht" }, { status: 400 });
   }
 
   let normalizedCoachId: string | null = null;
@@ -88,12 +69,11 @@ export async function POST(request: Request) {
       const nextCoachId = coachId.trim();
       const coachExists = await isCoachUser(nextCoachId);
       if (!coachExists) {
-        const response = jsonNoStore(
+        return jsonWithRequestId(
+          requestId,
           { error: "Geselecteerde coach bestaat niet." },
           { status: 400 }
         );
-        response.headers.set("x-request-id", requestId);
-        return response;
       }
       normalizedCoachId = nextCoachId;
     }
@@ -101,12 +81,11 @@ export async function POST(request: Request) {
     const requestedCoachId =
       typeof coachId === "string" ? coachId.trim() : null;
     if (requestedCoachId && requestedCoachId !== session.user.id) {
-      const response = jsonNoStore(
+      return jsonWithRequestId(
+        requestId,
         { error: "Coaches kunnen alleen coachees aan zichzelf koppelen." },
         { status: 403 }
       );
-      response.headers.set("x-request-id", requestId);
-      return response;
     }
     normalizedCoachId = session.user.id;
   }
@@ -125,7 +104,5 @@ export async function POST(request: Request) {
     coachId: normalizedCoachId,
   });
 
-  const response = jsonNoStore({ client }, { status: 201 });
-  response.headers.set("x-request-id", requestId);
-  return response;
+  return jsonWithRequestId(requestId, { client }, { status: 201 });
 }

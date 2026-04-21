@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-
 import { transcribeAudio } from "@/lib/ai/transcribe";
 import { OpenAITimeoutError } from "@/lib/ai/openai";
 import {
@@ -7,6 +5,7 @@ import {
   requireAuthenticatedSession,
 } from "@/lib/auth-guards";
 import { HttpError, isHttpError } from "@/lib/http/errors";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 import {
   normalizeTranscribeLanguage,
@@ -15,16 +14,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit,
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  return response;
-}
 
 export async function POST(request: Request) {
   const requestId = getRequestId(request);

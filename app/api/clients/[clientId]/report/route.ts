@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
-
 import { generateClientReport } from "@/lib/agents/service";
 import { OpenAIRateLimitError, OpenAITimeoutError } from "@/lib/ai/openai";
-import { auth } from "@/lib/auth";
+import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
-import { listClientReports } from "@/lib/data/store";
+import { listClientReports } from "@/lib/data/reports";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 
 interface RouteParams {
@@ -14,17 +13,6 @@ interface RouteParams {
 }
 
 const DEBUG_DOC_CONTEXT = process.env.DEBUG_DOC_CONTEXT === "1";
-
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
 
 export async function GET(request: Request, { params }: RouteParams) {
   const requestId = getRequestId(request);
@@ -37,9 +25,9 @@ export async function GET(request: Request, { params }: RouteParams) {
   });
 
   try {
-    const cookie = request.headers.get("cookie") ?? "";
-    const session = await auth.api.getSession({
-      headers: { cookie },
+    const session = await getServerSessionFromRequest(request, {
+      requestId,
+      source: "/api/clients/[clientId]/report GET",
     });
 
     if (!session) {
@@ -151,9 +139,9 @@ export async function POST(request: Request, { params }: RouteParams) {
   });
 
   try {
-    const cookie = request.headers.get("cookie") ?? "";
-    const session = await auth.api.getSession({
-      headers: { cookie },
+    const session = await getServerSessionFromRequest(request, {
+      requestId,
+      source: "/api/clients/[clientId]/report POST",
     });
 
     if (!session) {

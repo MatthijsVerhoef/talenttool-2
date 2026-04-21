@@ -1,32 +1,21 @@
-import { NextResponse } from "next/server";
 import { DocumentExtractionStatus } from "@prisma/client";
 
 import { uploadToBlob } from "@/lib/blob";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
+import { jsonWithRequestId } from "@/lib/http/response";
 import {
   createClientDocument,
   getClientDocuments,
   updateClientDocumentExtraction,
-} from "@/lib/data/store";
+} from "@/lib/data/documents";
 import { extractDocumentContent } from "@/lib/documents/extract";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
-import { auth } from "@/lib/auth";
+import { getServerSessionFromRequest } from "@/lib/auth";
 
 interface Params {
   params: Promise<{
     clientId: string;
   }>;
-}
-
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit,
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
 }
 
 function queueDocumentExtraction(options: {
@@ -117,9 +106,9 @@ export async function GET(request: Request, { params }: Params) {
   const requestId = getRequestId(request);
   const route = "/api/clients/[clientId]/documents";
   const startedAt = Date.now();
-  const cookie = request.headers.get("cookie") ?? "";
-  const session = await auth.api.getSession({
-    headers: { cookie },
+  const session = await getServerSessionFromRequest(request, {
+    requestId,
+    source: "/api/clients/[clientId]/documents GET",
   });
 
   if (!session) {
@@ -174,9 +163,9 @@ export async function POST(request: Request, { params }: Params) {
   const requestId = getRequestId(request);
   const route = "/api/clients/[clientId]/documents";
   const startedAt = Date.now();
-  const cookie = request.headers.get("cookie") ?? "";
-  const session = await auth.api.getSession({
-    headers: { cookie },
+  const session = await getServerSessionFromRequest(request, {
+    requestId,
+    source: "/api/clients/[clientId]/documents POST",
   });
 
   if (!session) {

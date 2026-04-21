@@ -1,15 +1,8 @@
-import { NextResponse } from "next/server";
-
 import { getServerSessionFromRequest } from "@/lib/auth";
-import { updateUserProfile } from "@/lib/data/store";
+import { updateUserProfile } from "@/lib/data/users";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId } from "@/lib/observability";
 import { normalizeUserName } from "@/lib/user-name";
-
-function jsonNoStore(body: unknown, init?: ResponseInit) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
 
 export async function PATCH(request: Request) {
   const requestId = getRequestId(request);
@@ -19,16 +12,12 @@ export async function PATCH(request: Request) {
   });
 
   if (!session) {
-    const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 401 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 401 });
   }
 
   const payload = await request.json().catch(() => null);
   if (!payload) {
-    const response = jsonNoStore({ error: "Ongeldig verzoek" }, { status: 400 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Ongeldig verzoek" }, { status: 400 });
   }
 
   const { name, firstName, lastName, image, avatarAlt, companyName, companyLogoUrl } = payload as {
@@ -52,9 +41,7 @@ export async function PATCH(request: Request) {
   });
 
   if (hasNameInput && !normalizedName) {
-    const response = jsonNoStore({ error: "Naam is verplicht" }, { status: 400 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Naam is verplicht" }, { status: 400 });
   }
 
   if (
@@ -62,12 +49,7 @@ export async function PATCH(request: Request) {
     typeof companyName === "string" &&
     !companyName.trim()
   ) {
-    const response = jsonNoStore(
-      { error: "Bedrijfsnaam is verplicht" },
-      { status: 400 }
-    );
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Bedrijfsnaam is verplicht" }, { status: 400 });
   }
 
   const updated = await updateUserProfile(session.user.id, {
@@ -82,7 +64,5 @@ export async function PATCH(request: Request) {
       : {}),
   });
 
-  const response = jsonNoStore({ user: updated });
-  response.headers.set("x-request-id", requestId);
-  return response;
+  return jsonWithRequestId(requestId, { user: updated });
 }

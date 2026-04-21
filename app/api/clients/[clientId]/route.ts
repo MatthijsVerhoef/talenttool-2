@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError, isAdmin } from "@/lib/authz";
@@ -8,8 +8,9 @@ import {
   getClient,
   updateClientAvatar,
   updateClientProfile,
-} from "@/lib/data/store";
+} from "@/lib/data/clients";
 import { isCoachUser } from "@/lib/data/users";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { getRequestId } from "@/lib/observability";
 
 type RouteContext = {
@@ -17,12 +18,6 @@ type RouteContext = {
     clientId: string;
   }>;
 };
-
-function jsonNoStore(body: unknown, init?: ResponseInit) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
@@ -32,9 +27,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   });
 
   if (!session) {
-    const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 401 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 401 });
   }
 
   const user = { id: session.user.id, role: session.user.role };
@@ -49,12 +42,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       : null);
 
   if (!clientId) {
-    const response = jsonNoStore(
-      { error: "Client ID ontbreekt" },
-      { status: 400 }
-    );
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Client ID ontbreekt" }, { status: 400 });
   }
 
   if (!admin) {
@@ -65,18 +53,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       });
     } catch (error) {
       if (error instanceof ForbiddenError) {
-        const response = jsonNoStore({ error: error.message }, { status: 403 });
-        response.headers.set("x-request-id", requestId);
-        return response;
+        return jsonWithRequestId(requestId, { error: error.message }, { status: 403 });
       }
       throw error;
     }
   }
 
   if (!payload || typeof payload !== "object") {
-    const response = jsonNoStore({ error: "Ongeldig verzoek" }, { status: 400 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Ongeldig verzoek" }, { status: 400 });
   }
 
   const { name, managerName, focusArea, summary, goals, avatarUrl, coachId } = payload as {
@@ -91,9 +75,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   if (avatarUrl) {
     const client = await updateClientAvatar(clientId, avatarUrl);
-    const response = jsonNoStore({ client });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { client });
   }
 
   const hasCoachUpdate = Object.prototype.hasOwnProperty.call(
@@ -110,42 +92,34 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     } else if (typeof coachId === "string") {
       const coachExists = await isCoachUser(coachId);
       if (!coachExists) {
-        const response = jsonNoStore(
+        return jsonWithRequestId(
+          requestId,
           { error: "Geselecteerde coach bestaat niet." },
           { status: 400 }
         );
-        response.headers.set("x-request-id", requestId);
-        return response;
       }
       nextCoachId = coachId;
     } else {
-      const response = jsonNoStore(
+      return jsonWithRequestId(
+        requestId,
         { error: "Ongeldige coachreferentie" },
         { status: 400 }
       );
-      response.headers.set("x-request-id", requestId);
-      return response;
     }
   }
 
   if (!admin && hasCoachUpdate) {
     const client = await getClient(clientId);
     if (!client) {
-      const response = jsonNoStore(
-        { error: "Coachee niet gevonden" },
-        { status: 404 }
-      );
-      response.headers.set("x-request-id", requestId);
-      return response;
+      return jsonWithRequestId(requestId, { error: "Coachee niet gevonden" }, { status: 404 });
     }
 
     if (nextCoachId !== (client.coachId ?? null)) {
-      const response = jsonNoStore(
+      return jsonWithRequestId(
+        requestId,
         { error: "Alleen admins mogen de coachtoewijzing wijzigen." },
         { status: 403 }
       );
-      response.headers.set("x-request-id", requestId);
-      return response;
     }
 
     shouldApplyCoachUpdate = false;
@@ -165,12 +139,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     !shouldApplyCoachUpdate &&
     !hasManagerNameUpdate
   ) {
-    const response = jsonNoStore(
-      { error: "Geen wijzigingen doorgegeven" },
-      { status: 400 }
-    );
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Geen wijzigingen doorgegeven" }, { status: 400 });
   }
 
   const updatePayload: {
@@ -194,9 +163,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   const updatedClient = await updateClientProfile(clientId, updatePayload);
 
-  const response = jsonNoStore({ client: updatedClient });
-  response.headers.set("x-request-id", requestId);
-  return response;
+  return jsonWithRequestId(requestId, { client: updatedClient });
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
@@ -207,21 +174,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   });
 
   if (!session) {
-    const response = jsonNoStore({ error: "Niet geautoriseerd" }, { status: 401 });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 401 });
   }
 
   const params = await context.params;
   const clientId = params?.clientId ?? null;
 
   if (!clientId) {
-    const response = jsonNoStore(
-      { error: "Client ID ontbreekt" },
-      { status: 400 }
-    );
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { error: "Client ID ontbreekt" }, { status: 400 });
   }
 
   try {
@@ -236,9 +196,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     );
   } catch (error) {
     if (error instanceof ForbiddenError) {
-      const response = jsonNoStore({ error: error.message }, { status: 403 });
-      response.headers.set("x-request-id", requestId);
-      return response;
+      return jsonWithRequestId(requestId, { error: error.message }, { status: 403 });
     }
     throw error;
   }
@@ -247,12 +205,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const deletedClient = await deleteClientById(clientId);
 
     if (!deletedClient) {
-      const response = jsonNoStore(
-        { error: "Coachee niet gevonden" },
-        { status: 404 }
-      );
-      response.headers.set("x-request-id", requestId);
-      return response;
+      return jsonWithRequestId(requestId, { error: "Coachee niet gevonden" }, { status: 404 });
     }
 
     await deleteFromBlobSafely([
@@ -260,16 +213,13 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       ...deletedClient.documentUrls,
     ]);
 
-    const response = jsonNoStore({ success: true });
-    response.headers.set("x-request-id", requestId);
-    return response;
+    return jsonWithRequestId(requestId, { success: true });
   } catch (error) {
     console.error("Client delete failed", error);
-    const response = jsonNoStore(
+    return jsonWithRequestId(
+      requestId,
       { error: "Coachee verwijderen is mislukt." },
       { status: 500 }
     );
-    response.headers.set("x-request-id", requestId);
-    return response;
   }
 }

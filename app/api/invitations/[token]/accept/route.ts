@@ -3,10 +3,10 @@ import { APIError } from "better-auth";
 
 import { auth } from "@/lib/auth";
 import { deleteFromBlob, uploadToBlob } from "@/lib/blob";
-import { updateUserProfile } from "@/lib/data/store";
 import {
   findActiveInviteByToken,
   markInviteAccepted,
+  updateUserProfile,
 } from "@/lib/data/users";
 import { normalizeUserName } from "@/lib/user-name";
 

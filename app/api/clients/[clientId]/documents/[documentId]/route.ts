@@ -1,15 +1,15 @@
-import { NextResponse } from "next/server";
 import { DocumentExtractionStatus } from "@prisma/client";
 
-import { auth } from "@/lib/auth";
+import { getServerSessionFromRequest } from "@/lib/auth";
 import { assertCanAccessClient, ForbiddenError } from "@/lib/authz";
+import { jsonWithRequestId } from "@/lib/http/response";
 import { deleteFromBlob } from "@/lib/blob";
 import {
   deleteClientDocumentById,
   getClientDocumentById,
   getClientDocuments,
   updateClientDocumentExtraction,
-} from "@/lib/data/store";
+} from "@/lib/data/documents";
 import { extractDocumentContent } from "@/lib/documents/extract";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 
@@ -20,24 +20,13 @@ interface RouteParams {
   }>;
 }
 
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  response.headers.set("Cache-Control", "no-store");
-  return response;
-}
-
 export async function POST(request: Request, { params }: RouteParams) {
   const requestId = getRequestId(request);
   const route = "/api/clients/[clientId]/documents/[documentId]";
   const startedAt = Date.now();
-  const cookie = request.headers.get("cookie") ?? "";
-  const session = await auth.api.getSession({
-    headers: { cookie },
+  const session = await getServerSessionFromRequest(request, {
+    requestId,
+    source: "/api/clients/[clientId]/documents/[documentId] POST",
   });
 
   if (!session) {
@@ -188,9 +177,9 @@ export async function POST(request: Request, { params }: RouteParams) {
 
 export async function DELETE(request: Request, { params }: RouteParams) {
   const requestId = getRequestId(request);
-  const cookie = request.headers.get("cookie") ?? "";
-  const session = await auth.api.getSession({
-    headers: { cookie },
+  const session = await getServerSessionFromRequest(request, {
+    requestId,
+    source: "/api/clients/[clientId]/documents/[documentId] DELETE",
   });
 
   if (!session) {

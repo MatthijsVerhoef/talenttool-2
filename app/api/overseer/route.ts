@@ -1,8 +1,7 @@
-import { NextResponse } from "next/server";
-
 import { runOverseerAgent } from "@/lib/agents/service";
 import { OpenAITimeoutError } from "@/lib/ai/openai";
-import { auth } from "@/lib/auth";
+import { getServerSessionFromRequest } from "@/lib/auth";
+import { jsonWithRequestId } from "@/lib/http/response";
 import {
   assertCanAccessClient,
   ForbiddenError,
@@ -13,18 +12,8 @@ import {
   getOverseerWindow,
   getOwnedAgentMessage,
   getOwnedCoachingSession,
-} from "@/lib/data/store";
+} from "@/lib/data/sessions";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
-
-function jsonWithRequestId(
-  requestId: string,
-  body: unknown,
-  init?: ResponseInit
-) {
-  const response = NextResponse.json(body, init);
-  response.headers.set("x-request-id", requestId);
-  return response;
-}
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -37,8 +26,9 @@ export async function GET(request: Request) {
   });
 
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
+    const session = await getServerSessionFromRequest(request, {
+      requestId,
+      source: "/api/overseer GET",
     });
 
     if (!session) {
@@ -100,7 +90,7 @@ export async function GET(request: Request) {
     });
     return jsonWithRequestId(
       requestId,
-      { error: "Lens 2 is tijdelijk niet bereikbaar." },
+      { error: "Overzichtscoach is tijdelijk niet bereikbaar." },
       { status: 500 }
     );
   }
@@ -117,8 +107,9 @@ export async function POST(request: Request) {
   });
 
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
+    const session = await getServerSessionFromRequest(request, {
+      requestId,
+      source: "/api/overseer POST",
     });
 
     if (!session) {
@@ -418,8 +409,8 @@ export async function POST(request: Request) {
       requestId,
       {
         error: isTimeout
-          ? "Lens 2 reageerde niet binnen de ingestelde tijd."
-          : "Lens 2 is tijdelijk niet bereikbaar.",
+          ? "Overzichtscoach reageerde niet binnen de ingestelde tijd."
+          : "Overzichtscoach is tijdelijk niet bereikbaar.",
         requestId,
       },
       { status }
