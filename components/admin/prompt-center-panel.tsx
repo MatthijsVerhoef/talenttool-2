@@ -262,7 +262,7 @@ export function PromptCenterPanel({
                         promptProps.isRefining &&
                         promptProps.refineTarget === "COACH"
                       }
-                      className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white disabled:opacity-50"
+                      className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-50"
                     >
                       {promptProps.isRefining &&
                       promptProps.refineTarget === "COACH"

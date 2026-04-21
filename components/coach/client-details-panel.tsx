@@ -299,7 +299,7 @@ export function ClientDetailsPanel({
                       />
                       <label
                         htmlFor={avatarInputId}
-                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
                       >
                         Wijzig avatar
                       </label>
@@ -332,7 +332,7 @@ export function ClientDetailsPanel({
                           name: event.target.value,
                         }))
                       }
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Sophie van Dijk"
                       required
                     />
@@ -349,7 +349,7 @@ export function ClientDetailsPanel({
                           managerName: event.target.value,
                         }))
                       }
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Mark Jansen"
                     />
                   </label>
@@ -365,7 +365,7 @@ export function ClientDetailsPanel({
                           focusArea: event.target.value,
                         }))
                       }
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Leiderschap en communicatie"
                     />
                   </label>
@@ -381,7 +381,7 @@ export function ClientDetailsPanel({
                         }))
                       }
                       rows={4}
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Korte omschrijving van de situatie, achtergrond of hulpvraag"
                     />
                   </label>
@@ -397,7 +397,7 @@ export function ClientDetailsPanel({
                         }))
                       }
                       rows={3}
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
                     />
                   </label>
@@ -413,7 +413,7 @@ export function ClientDetailsPanel({
                             coachId: event.target.value,
                           }))
                         }
-                        className="rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                         disabled={isCoachOptionsLoading}
                       >
                         <option value="">Nog niet toegewezen</option>
@@ -442,7 +442,7 @@ export function ClientDetailsPanel({
                       type="button"
                       onClick={() => onDelete(selectedClient.id)}
                       disabled={deletingClientId === selectedClient.id}
-                      className="rounded-lg border border-rose-200 px-4 py-2 font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                      className="rounded-full border border-rose-200 px-4 py-2 font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                     >
                       {deletingClientId === selectedClient.id
                         ? "Verwijderen..."
@@ -453,7 +453,7 @@ export function ClientDetailsPanel({
                       <button
                         type="button"
                         onClick={() => onOpenChange(false)}
-                        className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
+                        className="rounded-full border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
                       >
                         Annuleren
                       </button>
@@ -462,7 +462,7 @@ export function ClientDetailsPanel({
                         disabled={
                           isSaving || deletingClientId === selectedClient.id
                         }
-                        className="rounded-lg bg-[#2ea3f2] px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                        className="rounded-full bg-[#2ea3f2] px-4 py-2 font-semibold text-white hover:bg-[#1b8fd9] disabled:opacity-40"
                       >
                         {isSaving ? "Opslaan..." : "Opslaan"}
                       </button>
@@ -500,7 +500,7 @@ export function ClientDetailsPanel({
               type="button"
               onClick={onUpload}
               disabled={isUploading}
-              className="rounded-full bg-[#2ea3f2] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800"
+              className="rounded-full bg-[#2ea3f2] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1b8fd9]"
             >
               {isUploading ? "Uploaden..." : "Upload"}
             </button>

@@ -320,7 +320,7 @@ export function DashboardSidebar({
                         />
                         <label
                           htmlFor={newClientAvatarInputId}
-                          className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                          className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-white"
                         >
                           Kies bestand
                         </label>
@@ -347,7 +347,7 @@ export function DashboardSidebar({
                           name: event.target.value,
                         }))
                       }
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Sophie van Dijk"
                       required
                     />
@@ -364,7 +364,7 @@ export function DashboardSidebar({
                           managerName: event.target.value,
                         }))
                       }
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Mark Jansen"
                     />
                   </label>
@@ -380,7 +380,7 @@ export function DashboardSidebar({
                           focusArea: event.target.value,
                         }))
                       }
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Leiderschap en communicatie"
                     />
                   </label>
@@ -396,7 +396,7 @@ export function DashboardSidebar({
                         }))
                       }
                       rows={4}
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Korte omschrijving van de situatie, achtergrond of hulpvraag"
                     />
                   </label>
@@ -412,7 +412,7 @@ export function DashboardSidebar({
                         }))
                       }
                       rows={3}
-                      className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                       placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
                     />
                   </label>
@@ -428,7 +428,7 @@ export function DashboardSidebar({
                             coachId: event.target.value,
                           }))
                         }
-                        className="rounded-lg border border-slate-300 bg-white p-2 text-sm focus:border-slate-900 focus:outline-none"
+                        className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm focus:border-[#2ea3f2] focus:outline-none"
                         disabled={isCoachOptionsLoading}
                       >
                         <option value="">Nog niet toegewezen</option>
@@ -453,7 +453,7 @@ export function DashboardSidebar({
                       )}
                     </label>
                   ) : (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                       Deze Coachee wordt automatisch aan jouw coachaccount
                       gekoppeld.
                     </div>
@@ -463,14 +463,14 @@ export function DashboardSidebar({
                     <button
                       type="button"
                       onClick={() => onCreateDialogOpenChange(false)}
-                      className="rounded-lg border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
+                      className="rounded-full border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50"
                     >
                       Annuleren
                     </button>
                     <button
                       type="submit"
                       disabled={isCreating}
-                      className="rounded-lg bg-[#2ea3f2] px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                      className="rounded-full bg-[#2ea3f2] px-4 py-2 font-semibold text-white hover:bg-[#1b8fd9] disabled:opacity-40"
                     >
                       {isCreating ? "Opslaan..." : "Opslaan"}
                     </button>
