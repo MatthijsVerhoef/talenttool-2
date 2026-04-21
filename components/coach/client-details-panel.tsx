@@ -249,13 +249,14 @@ export function ClientDetailsPanel({
                   Bewerk Coachee
                 </button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl space-y-4">
+              <DialogContent className="max-w-full w-full lg:min-w-3xl p-4 lg:p-8 rounded-3xl space-y-4">
                 <DialogHeader>
                   <DialogTitle>Bewerk Coachee</DialogTitle>
                   <DialogDescription>
                     Werk gegevens bij voor {selectedClient.name}.
                   </DialogDescription>
                 </DialogHeader>
+
                 <form className="space-y-4" onSubmit={onSave}>
                   <div className="flex items-center gap-3">
                     <div className="size-16 rounded-full border border-slate-200 bg-slate-50 text-slate-600 flex items-center justify-center overflow-hidden">
@@ -285,6 +286,7 @@ export function ClientDetailsPanel({
                         <UserRound className="size-5" />
                       )}
                     </div>
+
                     <div className="space-y-2 text-sm">
                       <input
                         id={avatarInputId}
@@ -318,6 +320,7 @@ export function ClientDetailsPanel({
                       )}
                     </div>
                   </div>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Naam
                     <input
@@ -330,9 +333,11 @@ export function ClientDetailsPanel({
                         }))
                       }
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      placeholder="Bijv. Sophie van Dijk"
                       required
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Leidinggevende
                     <input
@@ -345,9 +350,10 @@ export function ClientDetailsPanel({
                         }))
                       }
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                      placeholder="Naam leidinggevende"
+                      placeholder="Bijv. Mark Jansen"
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Focusgebied
                     <input
@@ -360,8 +366,10 @@ export function ClientDetailsPanel({
                         }))
                       }
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      placeholder="Bijv. Leiderschap en communicatie"
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Samenvatting
                     <textarea
@@ -374,8 +382,10 @@ export function ClientDetailsPanel({
                       }
                       rows={4}
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      placeholder="Korte omschrijving van de situatie, achtergrond of hulpvraag"
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Doelen (gescheiden door komma)
                     <textarea
@@ -388,8 +398,10 @@ export function ClientDetailsPanel({
                       }
                       rows={3}
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
                     />
                   </label>
+
                   {isAdmin ? (
                     <label className="flex flex-col gap-1 text-sm">
                       Toegewezen coach
@@ -424,6 +436,7 @@ export function ClientDetailsPanel({
                       )}
                     </label>
                   ) : null}
+
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <button
                       type="button"
@@ -435,6 +448,7 @@ export function ClientDetailsPanel({
                         ? "Verwijderen..."
                         : "Verwijder coachee"}
                     </button>
+
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
@@ -501,10 +515,7 @@ export function ClientDetailsPanel({
           </p>
           <ul className="mt-3 space-y-2">
             {strengthsAndWatchouts.map((item, idx) => (
-              <li
-                key={`${item}-${idx}`}
-                className="text-[13px] text-slate-700"
-              >
+              <li key={`${item}-${idx}`} className="text-[13px] text-slate-700">
                 • {item}
               </li>
             ))}
