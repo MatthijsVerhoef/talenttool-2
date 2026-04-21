@@ -19,16 +19,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  ProfileForm,
-  type UserForm,
-} from "@/components/settings/profile-form";
+import { ProfileForm, type UserForm } from "@/components/settings/profile-form";
 import type { ClientProfile } from "@/lib/data/clients";
 
 export type { UserForm };
 
 export type SettingsTab = "profile" | "prompts";
-export type ActiveSidebarTab = "dashboard" | "prompt-center" | "user-management";
+export type ActiveSidebarTab =
+  | "dashboard"
+  | "prompt-center"
+  | "user-management";
 
 export interface NewClientForm {
   name: string;
@@ -161,8 +161,11 @@ export function DashboardSidebar({
     isCreating,
     onSubmit: handleNewClientSubmit,
   } = createClientProps;
-  const { activeTab: activeSidebarTab, onNavigate, isAdmin: navIsAdmin } =
-    navigationProps;
+  const {
+    activeTab: activeSidebarTab,
+    onNavigate,
+    isAdmin: navIsAdmin,
+  } = navigationProps;
   const {
     sections: settingsSections,
     activeTab: activeSettingsTab,
@@ -267,7 +270,7 @@ export function DashboardSidebar({
                   Nieuw
                 </button>
               </DialogTrigger>
-              <DialogContent className="max-w-xl space-y-4">
+              <DialogContent className="w-3xl lg:min-w-3xl max-w-screen p-4 lg:p-8 rounded-3xl space-y-4">
                 <DialogHeader>
                   <DialogTitle>Nieuwe Coachee</DialogTitle>
                   <DialogDescription>
@@ -327,6 +330,7 @@ export function DashboardSidebar({
                       </p>
                     </div>
                   </div>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Naam
                     <input
@@ -339,9 +343,11 @@ export function DashboardSidebar({
                         }))
                       }
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      placeholder="Bijv. Sophie van Dijk"
                       required
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Leidinggevende
                     <input
@@ -354,9 +360,10 @@ export function DashboardSidebar({
                         }))
                       }
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
-                      placeholder="Naam leidinggevende"
+                      placeholder="Bijv. Mark Jansen"
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Focusgebied
                     <input
@@ -369,8 +376,10 @@ export function DashboardSidebar({
                         }))
                       }
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      placeholder="Bijv. Leiderschap en communicatie"
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Samenvatting
                     <textarea
@@ -383,8 +392,10 @@ export function DashboardSidebar({
                       }
                       rows={4}
                       className="rounded-lg border border-slate-300 p-2 text-sm focus:border-slate-900 focus:outline-none"
+                      placeholder="Korte omschrijving van de situatie, achtergrond of hulpvraag"
                     />
                   </label>
+
                   <label className="flex flex-col gap-1 text-sm">
                     Doelen (gescheiden door komma)
                     <textarea
@@ -400,6 +411,7 @@ export function DashboardSidebar({
                       placeholder="Bijv. Communicatie verbeteren, Energie bewaken"
                     />
                   </label>
+
                   {isAdmin ? (
                     <label className="flex flex-col gap-1 text-sm">
                       Toegewezen coach
@@ -441,6 +453,7 @@ export function DashboardSidebar({
                       gekoppeld.
                     </div>
                   )}
+
                   <div className="flex justify-end gap-2 text-sm">
                     <button
                       type="button"
