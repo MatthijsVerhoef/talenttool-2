@@ -102,6 +102,7 @@ model ClientDocument {
   client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId       String
   originalName   String
+  displayName    String?
   storedName     String
   mimeType       String
   size           Int

@@ -24,6 +24,8 @@ export type DocumentKind = "TEXT" | "AUDIO";
 export interface ClientDocument {
   id: string;
   originalName: string;
+  displayName: string | null;
+  blobUrl: string;
   storedName: string;
   mimeType: string;
   size: number;
@@ -60,6 +62,7 @@ const DOCUMENT_SNIPPET_MAX_CHARS = Number(
 function mapDocument(document: {
   id: string;
   originalName: string;
+  displayName?: string | null;
   storedName: string;
   mimeType: string;
   size: number;
@@ -75,6 +78,8 @@ function mapDocument(document: {
   return {
     id: document.id,
     originalName: document.originalName,
+    displayName: document.displayName ?? null,
+    blobUrl: document.storedName,
     storedName: document.storedName,
     mimeType: document.mimeType,
     size: document.size,
@@ -84,9 +89,7 @@ function mapDocument(document: {
     content: document.content,
     extractionStatus: document.extractionStatus,
     extractionError: document.extractionError,
-    extractedAt: document.extractedAt
-      ? document.extractedAt.toISOString()
-      : null,
+    extractedAt: document.extractedAt ? document.extractedAt.toISOString() : null,
   };
 }
 
@@ -148,6 +151,7 @@ export async function getClientDocuments(
 export async function createClientDocument(input: {
   clientId: string;
   originalName: string;
+  displayName?: string | null;
   storedName: string;
   mimeType: string;
   size: number;
@@ -177,6 +181,7 @@ export async function createClientDocument(input: {
       data: {
         clientId: input.clientId,
         originalName: input.originalName,
+        displayName: input.displayName ?? null,
         storedName: input.storedName,
         mimeType: input.mimeType,
         size: input.size,
@@ -196,6 +201,7 @@ export async function createClientDocument(input: {
         data: {
           clientId: input.clientId,
           originalName: input.originalName,
+          displayName: input.displayName ?? null,
           storedName: input.storedName,
           mimeType: input.mimeType,
           size: input.size,
@@ -240,6 +246,7 @@ export async function createClientDocument(input: {
       data: {
         clientId: input.clientId,
         originalName: input.originalName,
+        displayName: input.displayName ?? null,
         storedName: input.storedName,
         mimeType: input.mimeType,
         size: input.size,
@@ -477,6 +484,28 @@ export async function deleteClientDocumentById(
       select: LEGACY_DOCUMENT_WITH_CLIENT_SELECT,
     });
     return mapLegacyDocumentWithClient(document);
+  }
+}
+
+export async function renameClientDocument(
+  documentId: string,
+  clientId: string,
+  displayName: string,
+): Promise<ClientDocument | null> {
+  try {
+    const updated = await prisma.clientDocument.update({
+      where: { id: documentId, clientId },
+      data: { displayName: displayName.trim() || null },
+    });
+    return mapDocument(updated);
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return null;
+    }
+    throw error;
   }
 }
 

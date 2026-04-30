@@ -85,6 +85,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     companyLogoInputId,
     isAdmin,
     canEditClients,
+    canGiveFeedback,
     canUseSupervisorChannel,
     userInitial,
     handleUserSave,
@@ -111,10 +112,17 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     documents,
     selectedClientDocs,
     isDocUploading,
+    deletingDocumentId,
+    renamingDocumentId,
+    pendingFile,
     attachmentInputRef,
     fetchClientDocuments,
     handleAttachmentButtonClick,
     handleAttachmentChange,
+    confirmUploadWithLabel,
+    cancelPendingUpload,
+    handleDocumentDelete,
+    handleDocumentRename,
     cleanupClientDocuments,
   } = useDocumentManager({ selectedClientId, onError: setError });
   const [activeSettingsTab, setActiveSettingsTab] =
@@ -508,7 +516,14 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
     documentProps: {
       documents,
       isUploading: isDocUploading,
+      pendingFile,
+      deletingDocumentId,
+      renamingDocumentId,
       onUpload: handleAttachmentButtonClick,
+      onConfirmUpload: confirmUploadWithLabel,
+      onCancelUpload: cancelPendingUpload,
+      onDelete: handleDocumentDelete,
+      onRename: handleDocumentRename,
     },
   } as const;
 
@@ -721,7 +736,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             messagesRef: coachMessagesRef,
                             userName: displayUser.name,
                             userImage: displayUser.image,
-                            isAdmin,
+                            canGiveFeedback,
                             onFeedback: openFeedbackDialog,
                           }}
                           inputProps={{
@@ -746,7 +761,7 @@ export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
                             clientNameById,
                             userName: displayUser.name,
                             userImage: displayUser.image,
-                            isAdmin,
+                            canGiveFeedback,
                             onFeedback: openFeedbackDialog,
                           }}
                           inputProps={{

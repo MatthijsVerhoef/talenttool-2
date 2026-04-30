@@ -8,6 +8,7 @@ import {
   deleteClientDocumentById,
   getClientDocumentById,
   getClientDocuments,
+  renameClientDocument,
   updateClientDocumentExtraction,
 } from "@/lib/data/documents";
 import { extractDocumentContent } from "@/lib/documents/extract";
@@ -251,4 +252,52 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     success: true,
     documents,
   });
+}
+
+export async function PATCH(request: Request, { params }: RouteParams) {
+  const requestId = getRequestId(request);
+  const session = await getServerSessionFromRequest(request, {
+    requestId,
+    source: "/api/clients/[clientId]/documents/[documentId] PATCH",
+  });
+
+  if (!session) {
+    return jsonWithRequestId(requestId, { error: "Niet geautoriseerd" }, { status: 401 });
+  }
+
+  const { clientId, documentId } = await params;
+  if (!clientId || !documentId) {
+    return jsonWithRequestId(requestId, { error: "Coachee of document ontbreekt." }, { status: 400 });
+  }
+
+  try {
+    await assertCanAccessClient(
+      { id: session.user.id, role: session.user.role },
+      clientId,
+      { requestId, route: "/api/clients/[clientId]/documents/[documentId]", clientId }
+    );
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return jsonWithRequestId(requestId, { error: error.message }, { status: 403 });
+    }
+    throw error;
+  }
+
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return jsonWithRequestId(requestId, { error: "Ongeldig verzoek." }, { status: 400 });
+  }
+
+  const { displayName } = body as { displayName?: string };
+  if (typeof displayName !== "string") {
+    return jsonWithRequestId(requestId, { error: "displayName is verplicht." }, { status: 400 });
+  }
+
+  const updated = await renameClientDocument(documentId, clientId, displayName);
+  if (!updated) {
+    return jsonWithRequestId(requestId, { error: "Document niet gevonden." }, { status: 404 });
+  }
+
+  const documents = await getClientDocuments(clientId);
+  return jsonWithRequestId(requestId, { success: true, document: updated, documents });
 }

@@ -23,6 +23,7 @@ let supportsExtendedClientDocumentSchema: boolean | null = null;
 export const LEGACY_DOCUMENT_SELECT = {
   id: true,
   originalName: true,
+  displayName: true,
   storedName: true,
   mimeType: true,
   size: true,
@@ -46,6 +47,7 @@ function inferLegacyExtractionStatus(content: string | null) {
 export function mapLegacyDocument(document: {
   id: string;
   originalName: string;
+  displayName?: string | null;
   storedName: string;
   mimeType: string;
   size: number;
@@ -57,6 +59,8 @@ export function mapLegacyDocument(document: {
   return {
     id: document.id,
     originalName: document.originalName,
+    displayName: document.displayName ?? null,
+    blobUrl: document.storedName,
     storedName: document.storedName,
     mimeType: document.mimeType,
     size: document.size,

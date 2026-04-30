@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Edit2, UserRound } from "lucide-react";
+
+import { DocumentsDialog } from "@/components/coach/documents-dialog";
+import { UploadLabelDialog } from "@/components/coach/upload-label-dialog";
 
 import {
   Dialog,
@@ -78,7 +82,14 @@ interface ReportSectionProps {
 interface DocumentProps {
   documents: ClientDocument[];
   isUploading: boolean;
+  pendingFile: File | null;
+  deletingDocumentId: string | null;
+  renamingDocumentId: string | null;
   onUpload: () => void;
+  onConfirmUpload: (label: string) => void;
+  onCancelUpload: () => void;
+  onDelete: (documentId: string) => void;
+  onRename: (documentId: string, displayName: string) => void;
 }
 
 export interface ClientDetailsPanelProps {
@@ -130,7 +141,9 @@ export function ClientDetailsPanel({
     onSave,
     onDelete,
   } = editClientProps;
-  const { documents, isUploading, onUpload } = documentProps;
+  const { documents, isUploading, pendingFile, deletingDocumentId, renamingDocumentId, onUpload, onConfirmUpload, onCancelUpload, onDelete: onDeleteDocument, onRename } = documentProps;
+
+  const [docsDialogOpen, setDocsDialogOpen] = useState(false);
 
   const toggleClasses = [
     "inline-flex items-center rounded-full w-fit border mb-4 border-slate-200 bg-slate-50 p-1.5 text-xs font-medium text-slate-600",
@@ -491,22 +504,46 @@ export function ClientDetailsPanel({
               </p>
               <p className="text-[11px] text-slate-500">
                 {documents.length > 0
-                  ? `${documents.length} bestanden`
+                  ? `${documents.length} ${documents.length === 1 ? "bestand" : "bestanden"}`
                   : "Geen bestanden"}
               </p>
             </div>
-
-            <button
-              type="button"
-              onClick={onUpload}
-              disabled={isUploading}
-              className="rounded-full bg-[#2ea3f2] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1b8fd9]"
-            >
-              {isUploading ? "Uploaden..." : "Upload"}
-            </button>
+            <div className="flex items-center gap-2">
+              {documents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDocsDialogOpen(true)}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Beheren
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onUpload}
+                disabled={isUploading}
+                className="rounded-full bg-[#2ea3f2] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1b8fd9]"
+              >
+                {isUploading ? "Uploaden..." : "Upload"}
+              </button>
+            </div>
           </div>
 
-          {documents.length === 0 ? null : null}
+          <UploadLabelDialog
+            file={pendingFile}
+            onConfirm={onConfirmUpload}
+            onCancel={onCancelUpload}
+          />
+
+          <DocumentsDialog
+            open={docsDialogOpen}
+            onOpenChange={setDocsDialogOpen}
+            documents={documents}
+            deletingDocumentId={deletingDocumentId}
+            renamingDocumentId={renamingDocumentId}
+            onDelete={onDeleteDocument}
+            onRename={onRename}
+          />
         </div>
 
         <div className="rounded-3xl bg-white p-4">

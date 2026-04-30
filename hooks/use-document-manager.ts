@@ -28,13 +28,13 @@ export function useDocumentManager({
   const [clientDocuments, setClientDocuments] = useState<DocumentState>({});
   const [isDocUploading, setDocUploading] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [renamingDocumentId, setRenamingDocumentId] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedClientDocs = selectedClientId
     ? clientDocuments[selectedClientId]
     : undefined;
-
-  // ── Effects ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!selectedClientId) return;
@@ -54,8 +54,6 @@ export function useDocumentManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, selectedClientDocs]);
 
-  // ── Fetchers ─────────────────────────────────────────────────────────────
-
   async function fetchClientDocuments(clientId: string) {
     try {
       const response = await fetch(`/api/clients/${clientId}/documents`);
@@ -71,9 +69,7 @@ export function useDocumentManager({
     }
   }
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
-  async function uploadClientDocument(file: File) {
+  async function uploadClientDocument(file: File, displayName?: string) {
     if (!selectedClientId) return;
     const clientId = selectedClientId;
 
@@ -82,6 +78,9 @@ export function useDocumentManager({
     try {
       const payload = new FormData();
       payload.append("file", file);
+      if (displayName?.trim()) {
+        payload.append("displayName", displayName.trim());
+      }
 
       const response = await fetch(`/api/clients/${clientId}/documents`, {
         method: "POST",
@@ -97,9 +96,7 @@ export function useDocumentManager({
 
       const latestUploaded = Array.isArray(data.documents) ? data.documents[0] : null;
       if (latestUploaded?.extractionStatus === "FAILED") {
-        toast.error(
-          "Bestand is geüpload, maar tekstextractie is mislukt. Probeer herverwerken."
-        );
+        toast.error("Bestand is geüpload, maar tekstextractie is mislukt. Probeer herverwerken.");
       } else if (latestUploaded?.extractionStatus === "PENDING") {
         toast("Bestand geüpload. Verwerking loopt nog.");
       } else {
@@ -114,6 +111,21 @@ export function useDocumentManager({
     }
   }
 
+  const confirmUploadWithLabel = useCallback(
+    async (label: string) => {
+      if (!pendingFile) return;
+      const file = pendingFile;
+      setPendingFile(null);
+      await uploadClientDocument(file, label);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingFile, selectedClientId]
+  );
+
+  const cancelPendingUpload = useCallback(() => {
+    setPendingFile(null);
+  }, []);
+
   const handleAttachmentButtonClick = useCallback(() => {
     if (!selectedClientId || isDocUploading) return;
     attachmentInputRef.current?.click();
@@ -123,11 +135,10 @@ export function useDocumentManager({
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
-      void uploadClientDocument(file);
+      setPendingFile(file);
       event.target.value = "";
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedClientId]
+    []
   );
 
   async function handleDocumentDelete(documentId: string) {
@@ -159,6 +170,43 @@ export function useDocumentManager({
     }
   }
 
+  async function handleDocumentRename(documentId: string, displayName: string) {
+    if (!selectedClientId || !documentId || renamingDocumentId === documentId) {
+      return;
+    }
+    setRenamingDocumentId(documentId);
+    onError(null);
+    try {
+      const response = await fetch(
+        `/api/clients/${selectedClientId}/documents/${documentId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayName }),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Naam wijzigen is mislukt.");
+      }
+      setClientDocuments((prev) => ({
+        ...prev,
+        [selectedClientId]: Array.isArray(data.documents)
+          ? data.documents
+          : (prev[selectedClientId] ?? []).map((doc) =>
+              doc.id === documentId
+                ? { ...doc, displayName: displayName.trim() || null }
+                : doc
+            ),
+      }));
+    } catch (renameError) {
+      console.error(renameError);
+      onError((renameError as Error).message ?? "Naam wijzigen is mislukt.");
+    } finally {
+      setRenamingDocumentId((current) => (current === documentId ? null : current));
+    }
+  }
+
   const cleanupClientDocuments = useCallback((clientId: string) => {
     setClientDocuments((prev) => removeRecordKey(prev, clientId));
   }, []);
@@ -173,11 +221,16 @@ export function useDocumentManager({
     selectedClientDocs,
     isDocUploading,
     deletingDocumentId,
+    renamingDocumentId,
+    pendingFile,
     attachmentInputRef,
     fetchClientDocuments,
     handleAttachmentButtonClick,
     handleAttachmentChange,
+    confirmUploadWithLabel,
+    cancelPendingUpload,
     handleDocumentDelete,
+    handleDocumentRename,
     cleanupClientDocuments,
   };
 }

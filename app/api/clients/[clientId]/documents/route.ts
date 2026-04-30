@@ -209,6 +209,12 @@ export async function POST(request: Request, { params }: Params) {
     );
   }
 
+  const rawDisplayName = formData.get("displayName");
+  const displayName =
+    typeof rawDisplayName === "string" && rawDisplayName.trim()
+      ? rawDisplayName.trim()
+      : null;
+
   logInfo("documents.upload.start", {
     requestId,
     route,
@@ -237,6 +243,7 @@ export async function POST(request: Request, { params }: Params) {
     const createdDocument = await createClientDocument({
       clientId,
       originalName: file.name,
+      displayName,
       storedName: blob.url,
       mimeType: file.type || "application/octet-stream",
       size: file.size,
