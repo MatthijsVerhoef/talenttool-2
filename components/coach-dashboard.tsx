@@ -1,752 +1,861 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import type {
-  AgentMessage,
-  ClientDocument,
-  ClientProfile,
-} from "@/lib/data/store";
+import { ArrowLeft } from "lucide-react";
+import type { UserRole } from "@prisma/client";
+
+import { AdminUserManagement } from "@/components/admin/user-management";
+import { PromptCenterPanel } from "@/components/admin/prompt-center-panel";
+import { LayerDialog } from "@/components/admin/layer-dialog";
+import { FeedbackDialog } from "@/components/coach/feedback-dialog";
+import { ClientDetailsPanel } from "@/components/coach/client-details-panel";
+import { OverseerPanel } from "@/components/overseer/overseer-panel";
+import { CoachChatPanel } from "@/components/chat/coach-chat-panel";
+import { MobileChatHeader } from "@/components/chat/mobile-chat-header";
+import {
+  DashboardSidebar,
+  type ActiveSidebarTab,
+  type SettingsTab,
+} from "@/components/clients/dashboard-sidebar";
+
+import type { ClientProfile } from "@/lib/data/clients";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useCoachSession } from "@/hooks/use-coach-session";
+import { useAdminPanel } from "@/hooks/use-admin-panel";
+import { useDocumentManager } from "@/hooks/use-document-manager";
+import { useClientManager } from "@/hooks/use-client-manager";
+import { useReportManager } from "@/hooks/use-report-manager";
+import { useUserManager } from "@/hooks/use-user-manager";
+import { useOverseerSession } from "@/hooks/use-overseer-session";
 
 interface CoachDashboardProps {
   clients: ClientProfile[];
+  currentUser: {
+    name: string;
+    email: string;
+    image?: string | null;
+    companyName?: string | null;
+    companyLogoUrl?: string | null;
+    role: UserRole;
+  };
 }
 
-type HistoryState = Record<string, AgentMessage[]>;
-type DocumentState = Record<string, ClientDocument[]>;
+function getInitials(name?: string | null) {
+  if (!name) return "";
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.charAt(0) ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.charAt(0) ?? "" : "";
+  return (first + last).toUpperCase();
+}
 
-export function CoachDashboard({ clients }: CoachDashboardProps) {
+export function CoachDashboard({ clients, currentUser }: CoachDashboardProps) {
+  const router = useRouter();
+  const isMobile = useIsMobile();
+  const [clientList, setClientList] = useState<ClientProfile[]>(clients);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(
     clients[0]?.id ?? null
   );
-  const [clientHistories, setClientHistories] = useState<HistoryState>({});
-  const [clientDocuments, setClientDocuments] = useState<DocumentState>({});
-  const [overseerThread, setOverseerThread] = useState<AgentMessage[]>([]);
-  const [coachInput, setCoachInput] = useState("");
-  const [overseerInput, setOverseerInput] = useState("");
-  const [isCoachLoading, setCoachLoading] = useState(false);
-  const [isOverseerLoading, setOverseerLoading] = useState(false);
-  const [isDocUploading, setDocUploading] = useState(false);
-  const [coachPrompt, setCoachPrompt] = useState("");
-  const [coachPromptUpdatedAt, setCoachPromptUpdatedAt] = useState<
-    string | null
-  >(null);
-  const [isCoachPromptLoading, setCoachPromptLoading] = useState(true);
-  const [isCoachPromptSaving, setCoachPromptSaving] = useState(false);
-  const [overseerPrompt, setOverseerPrompt] = useState("");
-  const [overseerPromptUpdatedAt, setOverseerPromptUpdatedAt] = useState<
-    string | null
-  >(null);
-  const [isOverseerPromptLoading, setOverseerPromptLoading] = useState(true);
-  const [isOverseerPromptSaving, setOverseerPromptSaving] = useState(false);
+  const [autoSendAfterTranscription, setAutoSendAfterTranscription] =
+    useState(false);
+  const [activeChannel, setActiveChannel] = useState<"coach" | "meta">("coach");
+  const [mobileView, setMobileView] = useState<"list" | "chat" | "details">(
+    () => {
+      if (typeof window === "undefined") {
+        return "chat";
+      }
+      return window.innerWidth < 768 ? "list" : "chat";
+    }
+  );
+  const [activeSidebarTab, setActiveSidebarTab] =
+    useState<ActiveSidebarTab>("dashboard");
   const [error, setError] = useState<string | null>(null);
+  const {
+    displayUser,
+    userForm,
+    setUserForm,
+    userAvatarFile,
+    setUserAvatarFile,
+    companyLogoFile,
+    setCompanyLogoFile,
+    isUserSaving,
+    isSigningOut,
+    userAvatarInputId,
+    companyLogoInputId,
+    isAdmin,
+    canEditClients,
+    canGiveFeedback,
+    canUseSupervisorChannel,
+    userInitial,
+    handleUserSave,
+    handleSignOut,
+  } = useUserManager({ currentUser, onError: setError });
+  const {
+    coachMessagesRef,
+    clientHistories,
+    coachInput,
+    setCoachInput,
+    messages,
+    isSelectedClientCoachPending,
+    handleCoachSubmit,
+    handleVoiceTranscript,
+    handleVoiceError,
+    fetchClientHistory,
+    cleanupClientState,
+  } = useCoachSession({
+    selectedClientId,
+    autoSendAfterTranscription,
+    onError: setError,
+  });
+  const {
+    documents,
+    selectedClientDocs,
+    isDocUploading,
+    deletingDocumentId,
+    renamingDocumentId,
+    pendingFile,
+    attachmentInputRef,
+    fetchClientDocuments,
+    handleAttachmentButtonClick,
+    handleAttachmentChange,
+    confirmUploadWithLabel,
+    cancelPendingUpload,
+    handleDocumentDelete,
+    handleDocumentRename,
+    cleanupClientDocuments,
+  } = useDocumentManager({ selectedClientId, onError: setError });
+  const [activeSettingsTab, setActiveSettingsTab] =
+    useState<SettingsTab>("profile");
+  const {
+    availableModels,
+    coachModel,
+    setCoachModel,
+    overseerModel,
+    setOverseerModel,
+    isModelLoading,
+    isModelSaving,
+    handleModelSave,
+    getModelLabel,
+    coachPrompt,
+    setCoachPrompt,
+    coachPromptUpdatedAt,
+    isCoachPromptLoading,
+    isCoachPromptSaving,
+    handleCoachPromptSave,
+    overseerPrompt,
+    setOverseerPrompt,
+    overseerPromptUpdatedAt,
+    isOverseerPromptLoading,
+    isOverseerPromptSaving,
+    handleOverseerPromptSave,
+    reportPrompt,
+    setReportPrompt,
+    reportPromptUpdatedAt,
+    isReportPromptLoading,
+    isReportPromptSaving,
+    handleReportPromptSave,
+    isRefiningPrompt,
+    refineTarget,
+    handlePromptRegenerate,
+    feedbackDialogOpen,
+    setFeedbackDialogOpen,
+    feedbackTarget,
+    feedbackText,
+    setFeedbackText,
+    isFeedbackSubmitting,
+    isFeedbackLoading,
+    coachFeedbackItems,
+    overseerFeedbackItems,
+    openFeedbackDialog,
+    closeFeedbackDialog,
+    handleFeedbackSubmit,
+    coachOptions,
+    isCoachOptionsLoading,
+    coachOptionsError,
+    aiLayers,
+    isLayerLoading,
+    isLayerSaving,
+    layerDialogOpen,
+    editingLayer,
+    layerForm,
+    setLayerForm,
+    layerActionId,
+    layerActionType,
+    openLayerDialogFor,
+    closeLayerDialog,
+    handleLayerSubmit,
+    handleLayerToggle,
+    handleLayerDelete,
+  } = useAdminPanel({ isAdmin, onError: setError });
+  const settingsSections = useMemo<
+    Array<{
+      id: SettingsTab;
+      label: string;
+      title: string;
+      description: string;
+    }>
+  >(
+    () => [
+      {
+        id: "profile",
+        label: "Persoonlijk",
+        title: "Mijn profiel",
+        description: "Beheer je accountgegevens en profielfoto.",
+      },
+      {
+        id: "preferences",
+        label: "Voorkeuren",
+        title: "Voorkeuren",
+        description: "Pas het gedrag van de applicatie aan naar jouw wensen.",
+      },
+    ],
+    []
+  );
+  const activeSettings =
+    settingsSections.find((section) => section.id === activeSettingsTab) ??
+    settingsSections[0];
+
+  useEffect(() => {
+    setClientList(clients);
+  }, [clients]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem("autoSendAfterTranscription");
+    setAutoSendAfterTranscription(stored === "1");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      "autoSendAfterTranscription",
+      autoSendAfterTranscription ? "1" : "0"
+    );
+  }, [autoSendAfterTranscription]);
+
+  useEffect(() => {
+    if (!isAdmin && activeSidebarTab !== "dashboard") {
+      setActiveSidebarTab("dashboard");
+    }
+  }, [isAdmin, activeSidebarTab]);
+
+  useEffect(() => {
+    if (!canUseSupervisorChannel && activeChannel === "meta") {
+      setActiveChannel("coach");
+    }
+  }, [canUseSupervisorChannel, activeChannel]);
+
+  useEffect(() => {
+    if (!isMobile && mobileView !== "chat") {
+      setMobileView("chat");
+      return;
+    }
+    if (isMobile && activeSidebarTab !== "dashboard" && mobileView !== "chat") {
+      setMobileView("chat");
+    }
+  }, [isMobile, activeSidebarTab, mobileView]);
 
   const selectedClient = useMemo(
-    () => clients.find((client) => client.id === selectedClientId),
-    [clients, selectedClientId]
+    () => clientList.find((client) => client.id === selectedClientId),
+    [clientList, selectedClientId]
   );
+  const clientNameById = useMemo(
+    () =>
+      clientList.reduce<Record<string, string>>((acc, client) => {
+        acc[client.id] = client.name;
+        return acc;
+      }, {}),
+    [clientList]
+  );
+  const selectedClientInitials = getInitials(selectedClient?.name);
+  const {
+    editClientAvatarInputId,
+    newClientAvatarInputId,
+    isClientDialogOpen,
+    editingClientId,
+    clientForm,
+    setClientForm,
+    avatarFile,
+    setAvatarFile,
+    isClientSaving,
+    openEditDialog,
+    onEditDialogOpenChange,
+    handleClientSave,
+    isCreateClientDialogOpen,
+    newClientForm,
+    setNewClientForm,
+    newClientAvatarFile,
+    setNewClientAvatarFile,
+    newClientInitials,
+    isCreatingClient,
+    onCreateDialogOpenChange,
+    handleNewClientSubmit,
+    deletingClientId,
+    handleClientDelete,
+  } = useClientManager({
+    selectedClientId,
+    selectedClient,
+    isAdmin,
+    clientList,
+    onError: setError,
+    onClientSaved: (client) =>
+      setClientList((prev) =>
+        prev.map((c) => (c.id === client.id ? client : c))
+      ),
+    onClientCreated: (client) => {
+      setClientList((prev) => [...prev, client]);
+      setSelectedClientId(client.id);
+    },
+    onClientDeleted: (clientId, nextSelectedId) => {
+      cleanupClientState(clientId);
+      cleanupClientDocuments(clientId);
+      cleanupClientReports(clientId);
+      setClientList((prev) => prev.filter((c) => c.id !== clientId));
+      setSelectedClientId(nextSelectedId);
+    },
+    onRefresh: router.refresh,
+  });
+  const {
+    clientReportList,
+    isReportGenerating,
+    isReportLoading,
+    reportError,
+    handleGenerateReport,
+    handleRefreshReport,
+    handleOpenReport,
+    cleanupClientReports,
+  } = useReportManager({ selectedClientId });
+  const {
+    overseerThread,
+    overseerInput,
+    setOverseerInput,
+    isOverseerLoading,
+    overseerMessagesRef,
+    handleOverseerSubmit,
+    handleOverseerVoiceTranscript,
+    handleOverseerVoiceError,
+  } = useOverseerSession({
+    selectedClientId,
+    canUseSupervisorChannel,
+    onError: setError,
+  });
+  const isDashboardTab = activeSidebarTab === "dashboard";
+  const showSidebar = !isMobile || mobileView === "list";
+  const showMainContent = !isMobile || mobileView !== "list";
+  const isMobileDashboardChat =
+    isMobile && isDashboardTab && mobileView === "chat";
+  const isMobileDetailsView =
+    isMobile && isDashboardTab && mobileView === "details";
+  const showMenuButton = isMobile && mobileView !== "list";
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+  const [summaryCanExpand, setSummaryCanExpand] = useState(false);
+  const summaryRef = useRef<HTMLParagraphElement | null>(null);
 
+  const selectedClientHistory = selectedClientId
+    ? clientHistories[selectedClientId]
+    : undefined;
   useEffect(() => {
-    if (!selectedClientId) {
-      return;
-    }
-    const alreadyLoaded = clientHistories[selectedClientId];
-    if (!alreadyLoaded) {
+    if (!selectedClientId) return;
+    if (!selectedClientHistory) {
       void fetchClientHistory(selectedClientId);
     }
-    if (!clientDocuments[selectedClientId]) {
+    if (!selectedClientDocs) {
       void fetchClientDocuments(selectedClientId);
     }
-  }, [selectedClientId, clientHistories, clientDocuments]);
+  }, [selectedClientId, selectedClientHistory, selectedClientDocs]);
+
+  const scrollToBottom = useCallback(
+    (ref: React.RefObject<HTMLDivElement | null>) => {
+      if (ref.current) {
+        ref.current.scrollTo({
+          top: ref.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    },
+    []
+  );
+
+  const strengthsAndWatchouts = useMemo(() => {
+    if (!selectedClient) {
+      return [
+        "Selecteer een Coachee om sterktes en aandachtspunten te bekijken.",
+        "Gebruik het coachkanaal om actuele inzichten vast te leggen.",
+      ];
+    }
+
+    return [
+      `Sterk: intrinsieke motivatie rondom ${selectedClient.focusArea.toLowerCase()}.`,
+      "Sterk: reflecteert open op coachingvragen.",
+      "Aandachtspunt: energie verdelen over langere trajecten.",
+      "Aandachtspunt: vertaalt inzichten nog beperkt naar concrete acties.",
+    ];
+  }, [selectedClient]);
+
+  const focusArea = selectedClient?.focusArea ?? "";
+  const selectedClientSummary =
+    selectedClient?.summary?.trim() ||
+    "Selecteer een Coachee om details te bekijken.";
+
+  const focusTags = useMemo(() => {
+    return focusArea
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+  }, [focusArea]);
 
   useEffect(() => {
-    void fetchOverseerThread();
-  }, []);
+    setIsSummaryExpanded(false);
+  }, [selectedClientId]);
 
   useEffect(() => {
-    void fetchCoachPrompt();
-    void fetchOverseerPrompt();
-  }, []);
-
-  async function fetchClientHistory(clientId: string) {
-    try {
-      const response = await fetch(`/api/coach/${clientId}`);
-      if (!response.ok) {
-        throw new Error("Kan gespreksgeschiedenis niet laden.");
-      }
-      const data = await response.json();
-      setClientHistories((prev) => ({
-        ...prev,
-        [clientId]: data.history ?? [],
-      }));
-    } catch (fetchError) {
-      console.error(fetchError);
-      setError(
-        (fetchError as Error).message ?? "Geschiedenis laden is mislukt."
-      );
-    }
-  }
-
-  async function fetchOverseerThread() {
-    try {
-      const response = await fetch("/api/overseer");
-      if (!response.ok) {
-        throw new Error("Kan overview-gesprek niet laden.");
-      }
-      const data = await response.json();
-      setOverseerThread(data.thread ?? []);
-    } catch (fetchError) {
-      console.error(fetchError);
-    }
-  }
-
-  const test = console.log("test");
-
-  async function fetchClientDocuments(clientId: string) {
-    try {
-      const response = await fetch(`/api/clients/${clientId}/documents`);
-      if (!response.ok) {
-        throw new Error("Kan documenten niet laden.");
-      }
-      const data = await response.json();
-      setClientDocuments((prev) => ({
-        ...prev,
-        [clientId]: data.documents ?? [],
-      }));
-    } catch (fetchError) {
-      console.error(fetchError);
-      setError((fetchError as Error).message ?? "Documenten laden is mislukt.");
-    }
-  }
-
-  async function fetchCoachPrompt() {
-    setCoachPromptLoading(true);
-    try {
-      const response = await fetch("/api/prompts/coach");
-      if (!response.ok) {
-        throw new Error("Kan coachprompt niet laden.");
-      }
-      const data = await response.json();
-      setCoachPrompt(data.prompt ?? "");
-      setCoachPromptUpdatedAt(data.updatedAt ?? null);
-    } catch (fetchError) {
-      console.error(fetchError);
-      setError(
-        (fetchError as Error).message ?? "Coachprompt laden is mislukt."
-      );
-    } finally {
-      setCoachPromptLoading(false);
-    }
-  }
-
-  async function fetchOverseerPrompt() {
-    setOverseerPromptLoading(true);
-    try {
-      const response = await fetch("/api/prompts/overseer");
-      if (!response.ok) {
-        throw new Error("Kan overzichtsprompt niet laden.");
-      }
-      const data = await response.json();
-      setOverseerPrompt(data.prompt ?? "");
-      setOverseerPromptUpdatedAt(data.updatedAt ?? null);
-    } catch (fetchError) {
-      console.error(fetchError);
-      setError(
-        (fetchError as Error).message ?? "Overzichtsprompt laden is mislukt."
-      );
-    } finally {
-      setOverseerPromptLoading(false);
-    }
-  }
-
-  async function handleCoachSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedClientId || !coachInput.trim()) {
+    const summaryElement = summaryRef.current;
+    if (!summaryElement || !selectedClient?.summary?.trim()) {
+      setSummaryCanExpand(false);
       return;
     }
 
-    setCoachLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/coach/${selectedClientId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: coachInput }),
-      });
+    const measureSummary = () => {
+      const styles = window.getComputedStyle(summaryElement);
+      const lineHeight =
+        Number.parseFloat(styles.lineHeight) ||
+        Number.parseFloat(styles.fontSize) * 1.5 ||
+        0;
 
-      if (!response.ok) {
-        throw new Error("Coach kon niet reageren.");
-      }
+      const previousDisplay = summaryElement.style.display;
+      const previousOverflow = summaryElement.style.overflow;
+      const previousWebkitLineClamp = summaryElement.style.webkitLineClamp;
 
-      const data = await response.json();
-      setClientHistories((prev) => ({
-        ...prev,
-        [selectedClientId]: data.history ?? [],
-      }));
-      setCoachInput("");
-    } catch (sendError) {
-      console.error(sendError);
-      setError(
-        (sendError as Error).message ?? "Contact met de coach is mislukt."
-      );
-    } finally {
-      setCoachLoading(false);
+      summaryElement.style.display = "block";
+      summaryElement.style.overflow = "visible";
+      summaryElement.style.webkitLineClamp = "unset";
+
+      const fullHeight = summaryElement.scrollHeight;
+
+      summaryElement.style.display = previousDisplay;
+      summaryElement.style.overflow = previousOverflow;
+      summaryElement.style.webkitLineClamp = previousWebkitLineClamp;
+
+      setSummaryCanExpand(fullHeight > lineHeight * 3 + 1);
+    };
+
+    measureSummary();
+    window.addEventListener("resize", measureSummary);
+
+    return () => {
+      window.removeEventListener("resize", measureSummary);
+    };
+  }, [selectedClientId, selectedClient?.summary]);
+
+  useEffect(() => {
+    if (activeChannel === "coach") {
+      scrollToBottom(coachMessagesRef);
     }
-  }
+  }, [messages, activeChannel, scrollToBottom]);
 
-  async function handleCoachPromptSave(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-    if (!coachPrompt.trim()) {
-      setError("Prompt mag niet leeg zijn.");
-      return;
+  useEffect(() => {
+    if (activeChannel === "meta") {
+      scrollToBottom(overseerMessagesRef);
     }
+  }, [overseerThread, activeChannel, scrollToBottom]);
 
-    setCoachPromptSaving(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/prompts/coach", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ prompt: coachPrompt }),
-      });
+  const clientDetailsPanelProps = {
+    channelProps: {
+      activeChannel,
+      canUseSupervisorChannel,
+      onChannelChange: setActiveChannel,
+    },
+    clientProps: {
+      selectedClient: selectedClient ?? null,
+      selectedClientInitials,
+      selectedClientSummary,
+      focusTags,
+      strengthsAndWatchouts,
+      summaryRef,
+      isSummaryExpanded,
+      summaryCanExpand,
+      onToggleSummaryExpanded: () =>
+        setIsSummaryExpanded((current) => !current),
+    },
+    editClientProps: {
+      canEdit: canEditClients,
+      isDialogOpen: isClientDialogOpen,
+      onOpenChange: onEditDialogOpenChange,
+      onTriggerClick: () => {
+        if (!selectedClient) return;
+        openEditDialog(selectedClient);
+      },
+      clientForm,
+      setClientForm,
+      avatarFile,
+      setAvatarFile,
+      avatarInputId: editClientAvatarInputId,
+      isAdmin,
+      coachOptions,
+      isCoachOptionsLoading,
+      coachOptionsError,
+      deletingClientId,
+      isSaving: isClientSaving,
+      onSave: handleClientSave,
+      onDelete: (clientId: string) => void handleClientDelete(clientId),
+    },
+    reportProps: {
+      reports: clientReportList,
+      isLoading: isReportLoading,
+      isGenerating: isReportGenerating,
+      disabled: !selectedClientId,
+      error: reportError,
+      onGenerate: handleGenerateReport,
+      onOpen: handleOpenReport,
+    },
+    documentProps: {
+      documents,
+      isUploading: isDocUploading,
+      pendingFile,
+      deletingDocumentId,
+      renamingDocumentId,
+      onUpload: handleAttachmentButtonClick,
+      onConfirmUpload: confirmUploadWithLabel,
+      onCancelUpload: cancelPendingUpload,
+      onDelete: handleDocumentDelete,
+      onRename: handleDocumentRename,
+    },
+  } as const;
 
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error ?? "Prompt opslaan is mislukt.");
-      }
-
-      setCoachPrompt(data.prompt ?? coachPrompt);
-      setCoachPromptUpdatedAt(data.updatedAt ?? null);
-    } catch (saveError) {
-      console.error(saveError);
-      setError(
-        (saveError as Error).message ?? "Coachprompt opslaan is mislukt."
-      );
-    } finally {
-      setCoachPromptSaving(false);
-    }
-  }
-
-  async function handleOverseerPromptSave(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-    if (!overseerPrompt.trim()) {
-      setError("Prompt mag niet leeg zijn.");
-      return;
-    }
-
-    setOverseerPromptSaving(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/prompts/overseer", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ prompt: overseerPrompt }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error ?? "Prompt opslaan is mislukt.");
-      }
-
-      setOverseerPrompt(data.prompt ?? overseerPrompt);
-      setOverseerPromptUpdatedAt(data.updatedAt ?? null);
-    } catch (saveError) {
-      console.error(saveError);
-      setError(
-        (saveError as Error).message ?? "Overzichtsprompt opslaan is mislukt."
-      );
-    } finally {
-      setOverseerPromptSaving(false);
-    }
-  }
-
-  async function handleOverseerSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!overseerInput.trim()) {
-      return;
-    }
-
-    setOverseerLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/overseer`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: overseerInput }),
-      });
-      if (!response.ok) {
-        throw new Error("Overzichtscoach kon niet reageren.");
-      }
-      const data = await response.json();
-      setOverseerThread(data.thread ?? []);
-      setOverseerInput("");
-    } catch (sendError) {
-      console.error(sendError);
-      setError(
-        (sendError as Error).message ??
-          "Contact met de overzichtscoach is mislukt."
-      );
-    } finally {
-      setOverseerLoading(false);
-    }
-  }
-
-  async function handleDocumentUpload(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedClientId) {
-      return;
-    }
-
-    const form = event.currentTarget;
-    const fileInput = form.elements.namedItem(
-      "document"
-    ) as HTMLInputElement | null;
-    const file = fileInput?.files?.[0];
-    if (!file) {
-      setError("Selecteer een bestand om te uploaden.");
-      return;
-    }
-
-    setDocUploading(true);
-    setError(null);
-    try {
-      const payload = new FormData();
-      payload.append("file", file);
-
-      const response = await fetch(
-        `/api/clients/${selectedClientId}/documents`,
-        {
-          method: "POST",
-          body: payload,
+  const sidebarProps = {
+    showSidebar,
+    isAdmin,
+    userProps: {
+      name: displayUser.name,
+      image: displayUser.image,
+      companyName: displayUser.companyName,
+      companyLogoUrl: displayUser.companyLogoUrl,
+      userInitial,
+    },
+    clientListProps: {
+      clients: clientList,
+      selectedClientId,
+      onSelect: (clientId: string) => {
+        setSelectedClientId(clientId);
+        setActiveSidebarTab("dashboard");
+        if (isMobile) {
+          setMobileView("chat");
         }
-      );
-      if (!response.ok) {
-        throw new Error("Uploaden is mislukt.");
-      }
-
-      const data = await response.json();
-      setClientDocuments((prev) => ({
-        ...prev,
-        [selectedClientId]: data.documents ?? [],
-      }));
-
-      form.reset();
-    } catch (uploadError) {
-      console.error(uploadError);
-      setError((uploadError as Error).message ?? "Uploaden is niet gelukt.");
-    } finally {
-      setDocUploading(false);
-    }
-  }
-
-  const messages = selectedClientId
-    ? clientHistories[selectedClientId] ?? []
-    : [];
-  const documents = selectedClientId
-    ? clientDocuments[selectedClientId] ?? []
-    : [];
+      },
+    },
+    createClientProps: {
+      isDialogOpen: isCreateClientDialogOpen,
+      onDialogOpenChange: onCreateDialogOpenChange,
+      form: newClientForm,
+      setForm: setNewClientForm,
+      avatarFile: newClientAvatarFile,
+      setAvatarFile: setNewClientAvatarFile,
+      avatarInputId: newClientAvatarInputId,
+      initials: newClientInitials,
+      coachOptions,
+      isCoachOptionsLoading,
+      coachOptionsError,
+      isCreating: isCreatingClient,
+      onSubmit: handleNewClientSubmit,
+    },
+    navigationProps: {
+      activeTab: activeSidebarTab,
+      onNavigate: (tab: ActiveSidebarTab) => {
+        setActiveSidebarTab(tab);
+        if (isMobile) {
+          setMobileView("chat");
+        }
+      },
+      isAdmin,
+    },
+    settingsProps: {
+      sections: settingsSections,
+      activeTab: activeSettingsTab,
+      onTabChange: setActiveSettingsTab,
+      activeSection: activeSettings,
+      displayUser: {
+        name: displayUser.name,
+        email: displayUser.email,
+        image: displayUser.image,
+      },
+      userForm,
+      setUserForm,
+      userAvatarFile,
+      setUserAvatarFile,
+      companyLogoFile,
+      setCompanyLogoFile,
+      isUserSaving,
+      onSave: handleUserSave,
+      userAvatarInputId,
+      companyLogoInputId,
+      autoSendAfterTranscription,
+      onAutoSendChange: setAutoSendAfterTranscription,
+    },
+    footerProps: {
+      isSigningOut,
+      onSignOut: handleSignOut,
+    },
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 lg:flex-row">
-        <aside className="w-full h-fit rounded-2xl bg-white p-5 shadow-sm lg:w-72">
-          <div className="mb-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Actieve cliënten
-            </p>
-          </div>
-          <ul className="space-y-3">
-            {clients.map((client) => {
-              const isActive = client.id === selectedClientId;
-              return (
-                <li key={client.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedClientId(client.id)}
-                    className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                      isActive
-                        ? "border-blue-500 bg-blue-50 text-blue-900"
-                        : "border-slate-200 hover:border-slate-400"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold">{client.name}</p>
-                    <p className="text-xs text-slate-500">{client.focusArea}</p>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          {selectedClient && (
-            <div className="mt-6 space-y-5">
-              <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Overzicht
-                </p>
-                <p className="mt-2 text-sm text-slate-600">
-                  {selectedClient.summary}
-                </p>
-                <p className="mt-4 text-xs font-semibold uppercase text-slate-400">
-                  Doelen
-                </p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {selectedClient.goals.map((goal) => (
-                    <li key={goal}>{goal}</li>
-                  ))}
-                </ul>
-              </div>
+    <>
+      <img
+        alt="background"
+        src="/talenttool-bg.png"
+        className="absolute top-0 left-0 opacity-100 w-screen h-screen -z-1"
+      />
+      {/* {showMenuButton && (
+        <button
+          type="button"
+          onClick={() => setMobileView("list")}
+          className="lg:hidden fixed top-4 left-4 z-40 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+        >
+          Menu
+        </button>
+      )} */}
+      {/* Used a very flat light grey background for the app container */}
+      <div className="relative flex  h-screen max-h-screen w-full overflow-hidden text-slate-900">
+        <DashboardSidebar {...sidebarProps} />
 
-              <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Coachdocumenten
-                </p>
-                {documents.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-500">
-                    Nog geen bestanden.
-                  </p>
-                ) : (
-                  <ul className="mt-3 space-y-2 text-xs text-slate-600">
-                    {documents.map((doc) => (
-                      <li
-                        key={doc.id}
-                        className="rounded-lg border border-slate-100 bg-slate-50 p-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-slate-800">
-                            {doc.originalName}
-                          </p>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              doc.kind === "AUDIO"
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-blue-100 text-blue-700"
-                            }`}
-                          >
-                            {doc.kind === "AUDIO" ? "Audio" : "Tekst"}
-                          </span>
-                        </div>
-                        <p>
-                          {(doc.size / 1024).toFixed(1)} KB ·{" "}
-                          {new Date(doc.createdAt).toLocaleDateString()}
-                        </p>
-                        {doc.kind === "AUDIO" && doc.audioDuration && (
-                          <p className="text-[11px] text-slate-500">
-                            Duur: {doc.audioDuration.toFixed(1)} s
-                          </p>
-                        )}
-                        {doc.content && (
-                          <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
-                            {doc.content}
-                          </p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <form
-                  onSubmit={handleDocumentUpload}
-                  className="mt-3 space-y-2 text-xs"
+        {/* Main Content Area */}
+        <main
+          className={[
+            "flex flex-1 min-h-0 flex-col min-w-0 overflow-hidden",
+            showMainContent ? "flex" : "hidden lg:flex",
+          ].join(" ")}
+        >
+          {activeSidebarTab === "prompt-center" ? (
+            <PromptCenterPanel
+              modelProps={{
+                isLoading: isModelLoading,
+                availableModels,
+                coachModel,
+                setCoachModel,
+                overseerModel,
+                setOverseerModel,
+                isSaving: isModelSaving,
+                onSave: handleModelSave,
+              }}
+              promptProps={{
+                coach: {
+                  value: coachPrompt,
+                  onChange: setCoachPrompt,
+                  updatedAt: coachPromptUpdatedAt,
+                  isLoading: isCoachPromptLoading,
+                  isSaving: isCoachPromptSaving,
+                  onSave: handleCoachPromptSave,
+                },
+                overseer: {
+                  value: overseerPrompt,
+                  onChange: setOverseerPrompt,
+                  updatedAt: overseerPromptUpdatedAt,
+                  isLoading: isOverseerPromptLoading,
+                  isSaving: isOverseerPromptSaving,
+                  onSave: handleOverseerPromptSave,
+                },
+                report: {
+                  value: reportPrompt,
+                  onChange: setReportPrompt,
+                  updatedAt: reportPromptUpdatedAt,
+                  isLoading: isReportPromptLoading,
+                  isSaving: isReportPromptSaving,
+                  onSave: handleReportPromptSave,
+                },
+                isRefining: isRefiningPrompt,
+                refineTarget,
+                onRegenerate: handlePromptRegenerate,
+              }}
+              layerProps={{
+                layers: aiLayers,
+                isLoading: isLayerLoading,
+                hasModels: availableModels.length > 0,
+                actionId: layerActionId,
+                actionType: layerActionType,
+                getModelLabel,
+                onNew: () => openLayerDialogFor(null),
+                onEdit: openLayerDialogFor,
+                onDelete: handleLayerDelete,
+                onToggle: handleLayerToggle,
+              }}
+              feedbackProps={{
+                isLoading: isFeedbackLoading,
+                coachItems: coachFeedbackItems,
+                overseerItems: overseerFeedbackItems,
+              }}
+            />
+          ) : activeSidebarTab === "user-management" ? (
+            <AdminUserManagement
+              onBack={() => setActiveSidebarTab("dashboard")}
+            />
+          ) : (
+            <>
+              <div className="relative flex-1 min-h-0 overflow-hidden p-0 md:p-2">
+                <div
+                  className="
+                    relative flex h-full min-h-0 gap-4
+                    rounded-0
+                    md:rounded-[36px]
+                    overflow-hidden
+                    bg-white/25
+                    backdrop-blur-2xl backdrop-saturate-120
+                    p-0 md:p-4
+                    py-0!
+                    text-sm text-slate-800
+                  "
                 >
-                  <input
-                    type="file"
-                    name="document"
-                    accept=".txt,.md,.json,.csv,.pdf,.doc,.docx"
-                    disabled={isDocUploading}
-                    className="w-full text-xs"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isDocUploading}
-                    className="w-full rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white disabled:opacity-50"
-                  >
-                    {isDocUploading ? "Uploaden..." : "Uploaden"}
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-        </aside>
+                  {/* Border */}
+                  <div className="pointer-events-none absolute inset-0 rounded-[36px] border border-white z-10" />
 
-        <div className="flex-1 space-y-6">
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
-            <header className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Coachkanaal
-                </p>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {selectedClient
-                    ? `Coach voor ${selectedClient.name}`
-                    : "Selecteer een cliënt"}
-                </h2>
-              </div>
-              {isCoachLoading && (
-                <p className="text-xs text-blue-500">
-                  Coach bereidt een antwoord voor...
-                </p>
-              )}
-            </header>
-            <div className="mb-4 h-72 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-4">
-              {messages.length === 0 ? (
-                <p className="text-sm text-slate-500">Nog geen gesprek.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {messages.map((message) => {
-                    const usage = message.meta?.usage as
-                      | { totalTokens?: number }
-                      | undefined;
-                    return (
-                      <li
-                        key={message.id}
-                        className={`rounded-xl border px-3 py-2 text-sm ${
-                          message.role === "assistant" ||
-                          message.role === "system"
-                            ? "border-blue-200 bg-blue-50 text-blue-900"
-                            : "border-slate-200 bg-white"
-                        }`}
-                      >
-                        <p className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
-                          <span>{message.role}</span>
-                          <span className="text-[11px] text-slate-500">
-                            {message.source === "HUMAN" ? "Coach" : "AI"}
-                          </span>
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </p>
-                        {usage && (
-                          <p className="mt-1 text-[11px] text-slate-400">
-                            tokens: {usage.totalTokens ?? "?"}
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <form onSubmit={handleCoachSubmit} className="space-y-3">
-              <textarea
-                value={coachInput}
-                onChange={(event) => setCoachInput(event.target.value)}
-                placeholder={
-                  selectedClient
-                    ? `Werk de coach van ${selectedClient.name} bij...`
-                    : "Selecteer eerst een cliënt om te starten."
-                }
-                disabled={!selectedClient || isCoachLoading}
-                className="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-blue-500 focus:outline-none disabled:opacity-60"
-                rows={3}
-              />
-              <button
-                type="submit"
-                disabled={
-                  !selectedClient || !coachInput.trim() || isCoachLoading
-                }
-                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-              >
-                Verstuur naar coach
-              </button>
-            </form>
-          </section>
+                  {/* Top highlight */}
+                  <div className="pointer-events-none absolute inset-0 rounded-[36px] bg-gradient-to-b from-white/45 via-white/18 to-transparent z-10" />
 
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
-            <header className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-400">
-                  Overzichtscoach
-                </p>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Programmacoach
-                </h2>
-              </div>
-              {isOverseerLoading && (
-                <p className="text-xs text-purple-500">
-                  Analyse wordt samengesteld...
-                </p>
-              )}
-            </header>
-            <div className="mb-4 h-64 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-4">
-              {overseerThread.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  Vraag de overzichtscoach om inzichten over cliënten.
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {overseerThread.map((message) => (
-                    <li
-                      key={message.id}
-                      className={`rounded-xl border px-3 py-2 text-sm ${
-                        message.role === "assistant"
-                          ? "border-purple-200 bg-purple-50 text-purple-900"
-                          : "border-slate-200 bg-white"
-                      }`}
-                    >
-                      <p className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
-                        <span>{message.role}</span>
-                        <span className="text-[11px] text-slate-500">
-                          {message.source === "HUMAN" ? "Coach" : "AI"}
-                        </span>
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap leading-relaxed">
-                        {message.content}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <form onSubmit={handleOverseerSubmit} className="space-y-3">
-              <textarea
-                value={overseerInput}
-                onChange={(event) => setOverseerInput(event.target.value)}
-                placeholder="Vraag naar trends, risico's of volgende acties..."
-                disabled={isOverseerLoading}
-                className="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-purple-500 focus:outline-none disabled:opacity-60"
-                rows={3}
-              />
-              <button
-                type="submit"
-                disabled={!overseerInput.trim() || isOverseerLoading}
-                className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-              >
-                Vraag overzichtscoach
-              </button>
-            </form>
-          </section>
-
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
-            <header className="mb-4">
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                Promptbeheer
-              </p>
-              <h2 className="text-xl font-semibold text-slate-900">
-                Systeeminstructies
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Werk direct de basisprompts bij voor zowel de cliëntcoach als de
-                overzichtscoach.
-              </p>
-            </header>
-            <div className="space-y-6">
-              <div className="rounded-xl border border-slate-200 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700">
-                      Prompt voor coach
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Stuurt individuele cliëntanalyses.
-                    </p>
-                  </div>
-                  {isCoachPromptSaving && (
-                    <span className="text-xs text-emerald-600">Opslaan…</span>
-                  )}
-                </div>
-                {isCoachPromptLoading ? (
-                  <p className="text-sm text-slate-500">
-                    Coachprompt wordt geladen...
-                  </p>
-                ) : (
-                  <form onSubmit={handleCoachPromptSave} className="space-y-3">
-                    <textarea
-                      value={coachPrompt}
-                      onChange={(event) => setCoachPrompt(event.target.value)}
-                      rows={6}
-                      className="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-emerald-500 focus:outline-none"
-                      placeholder="Beschrijf hier hoe de AI-coach zich moet gedragen..."
-                    />
-                    <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-slate-400">
-                        Laatst bijgewerkt:{" "}
-                        {coachPromptUpdatedAt
-                          ? new Date(coachPromptUpdatedAt).toLocaleString()
-                          : "standaardprompt"}
-                      </p>
-                      <button
-                        type="submit"
-                        disabled={isCoachPromptSaving}
-                        className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                      >
-                        {isCoachPromptSaving ? "Opslaan..." : "Prompt opslaan"}
-                      </button>
+                  {/* Actual content */}
+                  <section className="flex flex-1 relative z-20 min-h-0 flex-col rounded-2xl pb-0 min-w-full lg:min-w-0">
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      {isMobileDashboardChat && (
+                        <MobileChatHeader
+                          selectedClient={selectedClient}
+                          selectedClientInitials={selectedClientInitials}
+                          onBack={() => setMobileView("list")}
+                          onViewDetails={() => {
+                            if (isMobile) {
+                              setMobileView("details");
+                            }
+                          }}
+                        />
+                      )}
+                      {activeChannel === "coach" ? (
+                        <CoachChatPanel
+                          historyProps={{
+                            messages,
+                            messagesRef: coachMessagesRef,
+                            userName: displayUser.name,
+                            userImage: displayUser.image,
+                            canGiveFeedback,
+                            onFeedback: openFeedbackDialog,
+                          }}
+                          inputProps={{
+                            value: coachInput,
+                            onChange: setCoachInput,
+                            onSubmit: handleCoachSubmit,
+                            disabled:
+                              !selectedClient || isSelectedClientCoachPending,
+                          }}
+                          voiceProps={{
+                            onTranscript: handleVoiceTranscript,
+                            onError: handleVoiceError,
+                            attachmentInputRef,
+                            onAttachmentChange: handleAttachmentChange,
+                          }}
+                        />
+                      ) : (
+                        <OverseerPanel
+                          threadProps={{
+                            messages: overseerThread,
+                            messagesRef: overseerMessagesRef,
+                            clientNameById,
+                            userName: displayUser.name,
+                            userImage: displayUser.image,
+                            canGiveFeedback,
+                            onFeedback: openFeedbackDialog,
+                          }}
+                          inputProps={{
+                            value: overseerInput,
+                            onChange: setOverseerInput,
+                            isLoading: isOverseerLoading,
+                            onSubmit: handleOverseerSubmit,
+                            onTranscript: handleOverseerVoiceTranscript,
+                            onVoiceError: handleOverseerVoiceError,
+                          }}
+                        />
+                      )}
                     </div>
-                  </form>
-                )}
-              </div>
-              <div className="rounded-xl border border-slate-200 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700">
-                      Prompt voor overzichtscoach
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Stuurt programma-analyses en trends.
-                    </p>
-                  </div>
-                  {isOverseerPromptSaving && (
-                    <span className="text-xs text-purple-600">Opslaan…</span>
-                  )}
-                </div>
-                {isOverseerPromptLoading ? (
-                  <p className="text-sm text-slate-500">
-                    Overzichtsprompt wordt geladen...
-                  </p>
-                ) : (
-                  <form
-                    onSubmit={handleOverseerPromptSave}
-                    className="space-y-3"
-                  >
-                    <textarea
-                      value={overseerPrompt}
-                      onChange={(event) =>
-                        setOverseerPrompt(event.target.value)
-                      }
-                      rows={6}
-                      className="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-purple-500 focus:outline-none"
-                      placeholder="Beschrijf de toon en focus voor de overzichtscoach..."
+                  </section>
+                  <aside className="hidden lg:flex min-h-0 w-84 shrink-0 pt-4 flex-col text-sm text-slate-700">
+                    <ClientDetailsPanel
+                      variant="desktop"
+                      {...clientDetailsPanelProps}
                     />
-                    <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-slate-400">
-                        Laatst bijgewerkt:{" "}
-                        {overseerPromptUpdatedAt
-                          ? new Date(overseerPromptUpdatedAt).toLocaleString()
-                          : "standaardprompt"}
-                      </p>
-                      <button
-                        type="submit"
-                        disabled={isOverseerPromptSaving}
-                        className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                      >
-                        {isOverseerPromptSaving
-                          ? "Opslaan..."
-                          : "Prompt opslaan"}
-                      </button>
-                    </div>
-                  </form>
-                )}
+                  </aside>
+                </div>
               </div>
-            </div>
-          </section>
-
-          {error && (
-            <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {error}
-            </p>
+            </>
           )}
-        </div>
+        </main>
+        {isMobileDetailsView && (
+          <div className="lg:hidden fixed inset-0 z-50 flex flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setMobileView("chat")}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
+              >
+                <ArrowLeft className="size-4" />
+                Terug
+              </button>
+              <div className="text-center min-w-0">
+                <p className="text-sm font-semibold text-slate-900">
+                  Cliëntdetails
+                </p>
+                <p className="text-[11px] text-slate-500 truncate">
+                  {selectedClient?.name ?? "Selecteer een Coachee"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileView("list")}
+                className="text-xs font-semibold text-slate-600"
+              >
+                coachees
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <ClientDetailsPanel
+                variant="mobile"
+                {...clientDetailsPanelProps}
+              />
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+
+      <LayerDialog
+        open={layerDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeLayerDialog();
+          }
+        }}
+        editingLayer={editingLayer}
+        layerForm={layerForm}
+        setLayerForm={setLayerForm}
+        availableModels={availableModels}
+        isSaving={isLayerSaving}
+        onSave={handleLayerSubmit}
+        onCancel={closeLayerDialog}
+      />
+
+      <FeedbackDialog
+        open={feedbackDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeFeedbackDialog();
+          } else {
+            setFeedbackDialogOpen(true);
+          }
+        }}
+        feedbackTarget={feedbackTarget}
+        feedbackText={feedbackText}
+        setFeedbackText={setFeedbackText}
+        isSubmitting={isFeedbackSubmitting}
+        onSubmit={handleFeedbackSubmit}
+        onCancel={closeFeedbackDialog}
+      />
+    </>
   );
 }
