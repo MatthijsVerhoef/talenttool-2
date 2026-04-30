@@ -1,7 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ExternalLink, FileText, Mic, Pencil, Trash2, Check, X } from "lucide-react";
+import {
+  ExternalLink,
+  FileText,
+  Mic,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+} from "lucide-react";
 
 import {
   Dialog,
@@ -22,7 +30,11 @@ interface DocumentsDialogProps {
   onRename: (documentId: string, displayName: string) => void;
 }
 
-function StatusBadge({ status }: { status: ClientDocument["extractionStatus"] }) {
+function StatusBadge({
+  status,
+}: {
+  status: ClientDocument["extractionStatus"];
+}) {
   if (status === "READY") {
     return (
       <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
@@ -52,9 +64,17 @@ interface DocumentRowProps {
   onRename: (id: string, name: string) => void;
 }
 
-function DocumentRow({ doc, isDeleting, isRenaming, onDelete, onRename }: DocumentRowProps) {
+function DocumentRow({
+  doc,
+  isDeleting,
+  isRenaming,
+  onDelete,
+  onRename,
+}: DocumentRowProps) {
   const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(doc.displayName ?? doc.originalName);
+  const [editValue, setEditValue] = useState(
+    doc.displayName ?? doc.originalName
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -99,10 +119,19 @@ function DocumentRow({ doc, isDeleting, isRenaming, onDelete, onRename }: Docume
               }}
               className="w-full rounded-lg border border-[#2ea3f2] px-2 py-0.5 text-xs focus:outline-none"
             />
-            <button type="button" onClick={commitEdit} disabled={isRenaming} className="shrink-0 text-green-600 hover:text-green-700">
+            <button
+              type="button"
+              onClick={commitEdit}
+              disabled={isRenaming}
+              className="shrink-0 text-green-600 hover:text-green-700"
+            >
               <Check className="size-3.5" />
             </button>
-            <button type="button" onClick={cancelEdit} className="shrink-0 text-slate-400 hover:text-slate-600">
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="shrink-0 text-slate-400 hover:text-slate-600"
+            >
               <X className="size-3.5" />
             </button>
           </div>
@@ -112,7 +141,9 @@ function DocumentRow({ doc, isDeleting, isRenaming, onDelete, onRename }: Docume
           </p>
         )}
         {!editing && (
-          <p className="truncate text-[10px] text-slate-400">{doc.originalName}</p>
+          <p className="truncate text-[10px] text-slate-400">
+            {doc.originalName}
+          </p>
         )}
       </div>
 
@@ -142,7 +173,10 @@ function DocumentRow({ doc, isDeleting, isRenaming, onDelete, onRename }: Docume
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => { onDelete(doc.id); setConfirmDelete(false); }}
+              onClick={() => {
+                onDelete(doc.id);
+                setConfirmDelete(false);
+              }}
               disabled={isDeleting}
               className="rounded-lg p-1 text-red-500 hover:bg-red-50"
               title="Bevestig verwijderen"
@@ -184,13 +218,15 @@ export function DocumentsDialog({
 }: DocumentsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg rounded-2xl p-4 lg:p-8">
         <DialogHeader>
           <DialogTitle>Documenten</DialogTitle>
           <DialogDescription>
             {documents.length === 0
               ? "Nog geen documenten geüpload."
-              : `${documents.length} ${documents.length === 1 ? "document" : "documenten"}`}
+              : `${documents.length} ${
+                  documents.length === 1 ? "document" : "documenten"
+                }`}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">

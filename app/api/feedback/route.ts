@@ -1,6 +1,6 @@
 import { AgentKind } from "@prisma/client";
 
-import { SessionGuardError, requireAdminSession } from "@/lib/auth-guards";
+import { SessionGuardError, requireAdminSession, requireAdminOrCoachSession } from "@/lib/auth-guards";
 import { createAgentFeedback, listAgentFeedback } from "@/lib/data/feedback";
 import {
   getAgentMessageById,
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
   try {
-    const session = await requireAdminSession(request, requestId);
+    const session = await requireAdminOrCoachSession(request, requestId);
 
     const payload = await request.json().catch(() => null);
     if (!payload || typeof payload !== "object") {

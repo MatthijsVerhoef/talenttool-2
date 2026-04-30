@@ -37,6 +37,7 @@ export async function extractDocumentContent(
   const isAudio = isAudioFile(input.fileName, mimeType);
   const isPdf = isPdfFile(input.fileName, mimeType);
   const isDocx = isDocxFile(input.fileName, mimeType);
+  const isLegacyDoc = isLegacyDocFile(input.fileName, mimeType);
   const startedAt = Date.now();
 
   logInfo("documents.extractor.start", {
@@ -47,9 +48,29 @@ export async function extractDocumentContent(
     isAudio,
     isPdf,
     isDocx,
+    isLegacyDoc,
   });
 
   try {
+    if (isLegacyDoc) {
+      logInfo("documents.extractor.end", {
+        requestId: input.requestId ?? null,
+        fileName: input.fileName,
+        mimeType,
+        branch: "legacy-doc",
+        status: DocumentExtractionStatus.FAILED,
+        contentChars: 0,
+        error: "Het .doc-formaat wordt niet ondersteund. Sla het bestand op als .docx en upload het opnieuw.",
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        kind: "TEXT",
+        extractionStatus: DocumentExtractionStatus.FAILED,
+        extractionError: "Het .doc-formaat wordt niet ondersteund. Sla het bestand op als .docx en upload het opnieuw.",
+        extractedAt: new Date(),
+      };
+    }
+
     if (isAudio) {
       const result = await extractAudioContent(input.buffer, input.fileName, mimeType);
       logInfo("documents.extractor.end", {
@@ -243,6 +264,7 @@ export async function extractDocumentContent(
       isAudio,
       isPdf,
       isDocx,
+      isLegacyDoc,
       durationMs: Date.now() - startedAt,
       errorMessage,
     });
@@ -377,6 +399,13 @@ function isDocxFile(fileName: string, mimeType?: string) {
     return true;
   }
   return /\.docx$/i.test(fileName);
+}
+
+function isLegacyDocFile(fileName: string, mimeType?: string) {
+  if (mimeType === "application/msword") {
+    return true;
+  }
+  return /\.doc$/i.test(fileName);
 }
 
 function isPdfFile(fileName: string, mimeType?: string) {

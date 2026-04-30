@@ -60,6 +60,7 @@ export function useUserManager({ currentUser, onError }: UseUserManagerOptions) 
       : "";
   const isAdmin = normalizedUserRole === "ADMIN";
   const canEditClients = isAdmin || normalizedUserRole === "COACH";
+  const canGiveFeedback = isAdmin || normalizedUserRole === "COACH";
   const canUseSupervisorChannel =
     normalizedUserRole === "ADMIN" || normalizedUserRole === "COACH";
   const userInitial = displayUser.name?.charAt(0).toUpperCase() ?? "C";
@@ -215,6 +216,7 @@ export function useUserManager({ currentUser, onError }: UseUserManagerOptions) 
     companyLogoInputId,
     isAdmin,
     canEditClients,
+    canGiveFeedback,
     canUseSupervisorChannel,
     userInitial,
     handleUserSave,

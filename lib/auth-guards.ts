@@ -57,3 +57,22 @@ export async function requireAdminSession(
     userId: session.userId,
   };
 }
+
+export async function requireAdminOrCoachSession(
+  request: Request,
+  requestId?: string,
+): Promise<{
+  requestId: string;
+  userId: string;
+}> {
+  const session = await requireAuthenticatedSession(request, requestId);
+
+  if (session.role !== UserRole.ADMIN && session.role !== UserRole.COACH) {
+    throw new SessionGuardError(403, "Niet geautoriseerd", session.requestId);
+  }
+
+  return {
+    requestId: session.requestId,
+    userId: session.userId,
+  };
+}

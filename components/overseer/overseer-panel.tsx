@@ -57,7 +57,7 @@ export interface OverseerThreadProps {
   clientNameById: Record<string, string>;
   userName: string | null | undefined;
   userImage: string | null | undefined;
-  isAdmin: boolean;
+  canGiveFeedback: boolean;
   onFeedback: (agentType: AgentKindType, message: AgentMessage) => void;
 }
 
@@ -82,7 +82,7 @@ export function OverseerPanel({ threadProps, inputProps }: OverseerPanelProps) {
     clientNameById,
     userName,
     userImage,
-    isAdmin,
+    canGiveFeedback,
     onFeedback,
   } = threadProps;
   const { value, onChange, isLoading, onSubmit, onTranscript, onVoiceError } =
@@ -173,7 +173,7 @@ export function OverseerPanel({ threadProps, inputProps }: OverseerPanelProps) {
                         Antwoord wordt gevormd...
                       </div>
                     )}
-                    {isAdmin && isAssistant && !isPendingResponse && (
+                    {canGiveFeedback && isAssistant && !isPendingResponse && (
                       <div className="mt-2 text-[11px]">
                         <button
                           type="button"

@@ -55,7 +55,7 @@ export interface CoachHistoryProps {
   messagesRef: React.RefObject<HTMLDivElement | null>;
   userName: string | null | undefined;
   userImage: string | null | undefined;
-  isAdmin: boolean;
+  canGiveFeedback: boolean;
   onFeedback: (agentType: AgentKindType, message: AgentMessage) => void;
 }
 
@@ -84,7 +84,7 @@ export function CoachChatPanel({
   inputProps,
   voiceProps,
 }: CoachChatPanelProps) {
-  const { messages, messagesRef, userName, userImage, isAdmin, onFeedback } =
+  const { messages, messagesRef, userName, userImage, canGiveFeedback, onFeedback } =
     historyProps;
   const { value, onChange, onSubmit, disabled } = inputProps;
   const { onTranscript, onError, attachmentInputRef, onAttachmentChange } =
@@ -148,7 +148,7 @@ export function CoachChatPanel({
                         Antwoord wordt gevormd...
                       </div>
                     )}
-                    {isAdmin &&
+                    {canGiveFeedback &&
                       message.role === "assistant" &&
                       isAi &&
                       !isPendingResponse && (
@@ -212,6 +212,7 @@ export function CoachChatPanel({
           ref={attachmentInputRef}
           type="file"
           className="sr-only"
+          accept=".pdf,.docx,.doc,.txt,.md,.csv,.mp3,.wav,.m4a,.aac,.ogg,.flac,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/*,audio/*"
           onChange={onAttachmentChange}
         />
       </form>
